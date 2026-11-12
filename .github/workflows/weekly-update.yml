@@ -1,0 +1,71 @@
+# Rebuilds the data and republishes the website every Tuesday morning (after Monday Night Football),
+# and whenever new code is pushed. Can also be run by hand from the repository's Actions tab.
+name: Weekly data update
+
+on:
+  schedule:
+    - cron: '0 15 * * 2'   # Tuesdays 15:00 UTC = 10:00 Eastern (9:00 during standard time)
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # to record the update (keeps the weekly schedule from being paused for inactivity)
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Reuse downloaded data from earlier runs
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: nfl-data-${{ github.run_id }}
+          restore-keys: nfl-data-
+
+      - name: Build the data (public build never includes private imports)
+        run: node --max-old-space-size=6144 pipeline/build.mjs --public
+
+      - name: Build the website
+        run: node pipeline/site.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Record the update
+        if: github.event_name == 'schedule'
+        run: |
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > data/last-update.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/last-update.txt
+          git commit -m "Weekly data update" || exit 0
+          git push
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

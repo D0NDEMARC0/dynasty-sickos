@@ -1,0 +1,16 @@
+{
+  "name": "dynasty-lab",
+  "version": "1.0.0",
+  "description": "Dynasty fantasy football analytics: YPRR, separation, explosive runs, dynasty values and Sleeper league power rankings",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "data": "node --max-old-space-size=4096 pipeline/build.mjs"
+  },
+  "type": "module",
+  "dependencies": {
+    "hyparquet": "^1.33.0",
+    "hyparquet-compressors": "^1.1.3"
+  },
+  "private": true
+}
