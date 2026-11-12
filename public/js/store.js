@@ -8,12 +8,15 @@ export const S = {
   mode: 'server', site: null,
   data: null, meta: null, byId: new Map(), rowById: new Map(),
   values: null, valuesKey: '',
-  settings: { qb: 1, scoring: 'ppr', teams: 12, anWeight: 0.3, ageTilt: 0, theme: 'auto', ...(saved.settings || {}) },
+  settings: { qb: 2, scoring: 'ppr', teams: 12, anWeight: 0.3, ageTilt: 0, theme: 'auto', ...(saved.settings || {}) },
   sleeperUser: saved.sleeperUser || '', sleeperUserId: saved.sleeperUserId || null,
   leagueId: saved.leagueId || null, league: null,
   version: 0,
   logs: {},
 };
+
+// Superflex is the default format; switch existing visitors over once (they can still pick 1QB in the header).
+if (!S.settings.sfDefault) { S.settings.qb = 2; S.settings.sfDefault = true; }
 
 export function persist() {
   try { localStorage.setItem(LS, JSON.stringify({ settings: S.settings, sleeperUser: S.sleeperUser, sleeperUserId: S.sleeperUserId, leagueId: S.leagueId })); } catch { /* storage unavailable */ }

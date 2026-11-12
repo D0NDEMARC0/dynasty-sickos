@@ -25,7 +25,7 @@ async function sdv(tag, file, season, current, columns) {
 
 // ---------------------------------------------------------------- one college season
 async function loadSeason(season, current) {
-  const [usage, box, rec, rush, pass, roster] = await Promise.all([
+  const [usage, box, rec, rush, pass, roster, tierRush, tierRec] = await Promise.all([
     sdv('espn_cfb_adv_player_usage', `adv_player_usage_${season}.parquet`, season, current,
       ['pos_team_id', 'player_id', 'player_name', 'position_group', 'game_id', 'rushes', 'targets', 'receptions', 'touches', 'opportunities',
         'rush_yards', 'receiving_yards', 'touchdowns', 'explosive_plays', 'successful_plays', 'epa', 'rz_targets', 'rz_rushes', 'rz_touchdowns',
@@ -38,7 +38,11 @@ async function loadSeason(season, current) {
     sdv('espn_cfb_adv_passing', `adv_passing_${season}.parquet`, season, current, ['pos_team_id', 'passer_player_name', 'Att', 'Comp', 'xComp', 'EPA', 'SR', 'Sck', 'AirYds']),
     sdv('espn_cfb_rosters', `cfb_rosters_${season}.parquet`, season, current,
       ['athlete_id', 'full_name', 'position_abbreviation', 'experience_abbreviation', 'team_id', 'team_location', 'division', 'height', 'weight', 'date_of_birth', 'headshot_href', 'cfbd_recruit_ids']),
+    sdv('espn_cfb_rushing', `cfb_rushing_${season}.parquet`, season, current, ['team_id', 'fbs_class', 'division']),
+    sdv('espn_cfb_receiving', `cfb_receiving_${season}.parquet`, season, current, ['team_id', 'fbs_class', 'division']),
   ]);
+  const tierByTeam = new Map();
+  for (const r of [...tierRush, ...tierRec]) tierByTeam.set(String(r.team_id), r.division === 'fcs' ? 'FCS' : r.fbs_class || null);
   if (!usage.length && !box.length) return null;
 
   const P = new Map(); // athlete id -> accumulator
@@ -145,6 +149,7 @@ async function loadSeason(season, current) {
     const routes = teamDb * (COLLEGE_ROUTE_RATE[pos] || 0);
     const s = {
       season, cid: id, name: ro?.full_name || o.name, pos, team: ro?.team_location || null, tid, div: ro?.division || null,
+      tier: tierByTeam.get(String(tid)) || (ro?.division === 'fcs' ? 'FCS' : null),
       cls: ro?.experience_abbreviation || null, ht: ro?.height ?? null, wt: ro?.weight ?? null, g,
       tgt, rec: o.rec, reyd: o.reyd, retd: o.retd, car: o.car, ruyd: o.ruyd, rutd: o.rutd, pc: o.pc, pa: o.pa, pyd: o.pyd, ptd: o.ptd, int: o.int,
       // shares
@@ -222,8 +227,13 @@ const PROD = {
 };
 // thresholds calibrated so a similar share of day 1–2 NFL draft picks clears each (~75–90%)
 const BREAKOUT = { WR: ['dom', 0.2], TE: ['dom', 0.12], RB: ['scsh', 0.2] };
+// Production is discounted for weaker competition (Power 4 full credit).
+export const TIER_FACTOR = { P4: 1, P5: 1, G6: 0.82, G5: 0.82, FCS: 0.6 }; // P5/G5 = pre-2024 labels
+// Before the draft there's no draft capital, so lean on what predicts it: production vs. competition, pedigree, age.
+const CLASS_AGE = { FR: 95, SO: 90, JR: 75, SR: 40 };
 export const PROSPECT_WEIGHTS = {
-  pre: { prod: 0.55, brk: 0.15, ath: 0.15, age: 0.1, rec: 0.05 },
+  pre: { prod: 0.4, rec: 0.25, brk: 0.15, ath: 0.1, age: 0.1 },
+  preQB: { prod: 0.35, rec: 0.35, ath: 0.15, age: 0.15 },
   drafted: { dc: 0.4, prod: 0.35, brk: 0.1, ath: 0.1, age: 0.05 },
 };
 
@@ -357,7 +367,8 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
         // before the combine: draft-eligible watch list = juniors/seniors with real production this season
         const cur = bySeason[current] || bySeason[current - 1];
         for (const s of cur ? cur.players.values() : []) {
-          if (!['JR', 'SR'].includes(s.cls) || s.div !== 'fbs' || !s.q) continue;
+          const prev = bySeason[current - 1]?.players.get(s.cid);
+          if (!['JR', 'SR'].includes(s.cls) || s.div !== 'fbs' || !(s.q || prev?.q)) continue;
           add(y, { status: 'watch', cid: s.cid, name: s.name, pos: s.pos, school: s.team });
         }
       }
@@ -375,7 +386,7 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     p.ht = p.combine?.ht ?? last?.ht ?? null; p.wt = p.combine?.wt ?? last?.wt ?? null;
     p.recruit = list.length ? findRecruit(p.name, p.pos, list[0].season) : null;
     const best = list.length ? bestSeason(p.pos, list) : null;
-    p.best = best ? Object.fromEntries(['season', 'cls', 'team', 'g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'ruyd', 'rutd', 'pa', 'pyd', 'ptd', 'int', ...PROD[p.pos].map(x => x[0])].map(k => [k, best[k]])) : null;
+    p.best = best ? Object.fromEntries(['season', 'cls', 'team', 'tier', 'g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'ruyd', 'rutd', 'pa', 'pyd', 'ptd', 'int', ...PROD[p.pos].map(x => x[0])].map(k => [k, best[k]])) : null;
     p.brk = breakout(p.pos, list, p.dob);
     if (p.dob) p.age = rd((new Date(`${p.draftClass}-04-25`) - new Date(p.dob)) / (365.25 * 864e5), 1);
   }
@@ -387,16 +398,16 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     for (const p of group) {
       let num2 = 0, den = 0;
       for (const [m, w] of PROD[pos]) { const v = feat[m](p.best?.[m]); if (v != null) { num2 += v * w; den += w; } }
-      const prod = den >= 0.4 ? num2 / den : null;
+      const prod = den >= 0.4 ? (num2 / den) * (TIER_FACTOR[p.best?.tier] ?? 0.85) : null;
       const comps = {
         prod: prod != null ? Math.round(prod) : null,
         brk: breakoutScore(p.brk),
         ath: p.combine?.ath ?? null,
-        age: p.age != null ? Math.round(100 - ageRank(p.age)) : null,
+        age: p.age != null ? Math.round(100 - ageRank(p.age)) : !p.draft ? CLASS_AGE[p.cls] ?? null : null,
         rec: p.recruit?.stars ? Math.round(Math.max(0, Math.min(5, p.recruit.stars) - 2) / 3 * 100) : null,
         dc: p.draft ? draftCapital(p.draft.p) : null,
       };
-      const W = p.draft ? PROSPECT_WEIGHTS.drafted : PROSPECT_WEIGHTS.pre;
+      const W = p.draft ? PROSPECT_WEIGHTS.drafted : p.pos === 'QB' ? PROSPECT_WEIGHTS.preQB : PROSPECT_WEIGHTS.pre;
       let s = 0, d = 0;
       for (const [k, w] of Object.entries(W)) if (comps[k] != null) { s += comps[k] * w; d += w; }
       p.comps = comps;

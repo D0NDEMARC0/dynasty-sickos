@@ -27,7 +27,7 @@ export async function render(root, params, query) {
   const status = meta.classes[st.cls]?.status;
   const note = () => {
     const basis = `<b>Mock order</b> blends ${used.join(', ')}${used.length === 1 ? ' only — real ADP and expert rankings are added automatically as they’re published (FantasyPros rookie rankings usually in winter, Sleeper rookie ADP once rookie drafts start after the NFL Draft)' : ''}.`;
-    if (status === 'watch') return `<b>${st.cls} class — before the combine.</b> Draft-eligible juniors and seniors producing this season. In early March the list switches to official combine invitees, and after the NFL Draft in late April to the drafted class — automatically. ${basis}`;
+    if (status === 'watch') return `<b>${st.cls} class — way-too-early.</b> Draft-eligible juniors and seniors, scored on production (discounted for Group of 6 / FCS competition), recruiting pedigree, breakout and class. In early March the list switches to official combine invitees, and after the NFL Draft in late April to the drafted class — automatically. ${basis}`;
     if (status === 'combine') return `<b>${st.cls} class — combine invitees.</b> Draft capital is added automatically after the NFL Draft. ${basis}`;
     return `<b>${st.cls} draft class.</b> ${basis}`;
   };

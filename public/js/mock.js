@@ -40,12 +40,18 @@ export function consensus(list, { sf, history = [] }) {
     return new Map(have.map((p, i) => [p, i + 1]));
   };
   const curves = positionalCurves(history);
+  const overall = rankBy(p => p.score ?? null, false); // position-neutral quality
   const scoreSlot = new Map(), byPos = {};
   for (const p of list) if (p.score != null) (byPos[p.pos] ||= []).push(p);
   for (const [pos, arr] of Object.entries(byPos)) {
     arr.sort((a, b) => b.score - a.score);
     const c = curves[pos] || [];
-    arr.forEach((p, i) => scoreSlot.set(p, i < c.length ? c[i] : (c.length ? c[c.length - 1] : list.length) + (i - c.length + 1) * 4));
+    arr.forEach((p, i) => {
+      if (!c.length) { scoreSlot.set(p, overall.get(p)); return; }
+      const curve = i < c.length ? c[i] : c[c.length - 1] + (i - c.length + 1) * 4;
+      // half "where this position-rank usually goes", half overall quality — so a weak RB1 doesn't jump the class
+      scoreSlot.set(p, 0.5 * curve + 0.5 * overall.get(p));
+    });
   }
   const signals = [
     { label: 'rookie ADP', w: 0.4, m: rankBy(p => p.adp?.rookie ?? null, true) },
