@@ -46,7 +46,12 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
 - **Rankings** – dynasty value per player: market value (FantasyCalc + DynastyProcess), Analytics Score, age window,
   and ▲ Buy / ▼ Sell signals where fundamentals and price disagree. Tune the analytics weight and an age tilt.
 - **Analytics** – per-position leaderboards (WR, RB, TE, QB) with percentile shading and an X/Y scatter of any two metrics.
-- **Player pages** – percentile bars, weekly fantasy points, season history, game log.
+- **Player pages** – percentile bars, weekly fantasy points, season history, game log, and college career.
+- **Prospects** – Prospect Score for the incoming class and the last four rookie classes: college production,
+  breakout age/class, combine athleticism, recruiting stars, age and draft capital. The incoming class goes from a
+  draft-eligible watch list (fall) to combine invitees (March) to the drafted class (late April) automatically.
+- **College** – college football advanced stats explorer (EPA, success rate, explosive rate, target share,
+  dominator rating, YPTPA, CPOE…) with scatter plots, plus a profile page for every college player.
 - **League** – enter your Sleeper username: power rankings, contend/rebuild quadrant, positional rooms, draft capital,
   best lineups, sell-high candidates and buy-low targets. Format and scoring come from the league automatically.
 - **Methodology** – every data source, metric definition and model weight.
@@ -59,6 +64,8 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
 | NFL Next Gen Stats (via nflverse) | separation, cushion, YAC over expected, RYOE, time to throw |
 | FTN charting (via nflverse) | drops, contested/catchable targets, screens, play-action |
 | Pro Football Reference (via nflverse) | yards before/after contact, broken tackles, bad throws, pressures |
+| sportsdataverse (ESPN college data) | college advanced stats (EPA, success rate, shares, CPOE), rosters, recruiting |
+| nflverse combine & draft picks | athletic testing and draft capital for the Prospect Score |
 | FantasyCalc, DynastyProcess | dynasty market values and rookie pick values |
 | Sleeper API | player directory, injuries, your league |
 

@@ -7,6 +7,7 @@ import * as L from './load.mjs';
 import { buildSeason, ROUTE_RATE } from './season.mjs';
 import { scoreSeason, blendScores, MODEL } from './score.mjs';
 import { loadImports, applyImport, nameKey } from './imports.mjs';
+import { buildCollege } from './college.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, '..', 'data', 'out');
@@ -153,7 +154,7 @@ function bioFrom(sid, gsis) {
     rookie: np?.rookie_season ?? null,
     college: sp?.college || np?.college_name || null,
     ht: np?.height ?? (sp?.ht ? Number(sp.ht) : null), wt: np?.weight ?? (sp?.wt ? Number(sp.wt) : null),
-    hs: np?.headshot || null, inj: sp?.inj || null, yexp: sp?.yexp ?? np?.years_of_experience ?? null,
+    hs: np?.headshot || null, espn: np?.espn_id ? String(np.espn_id) : null, inj: sp?.inj || null, yexp: sp?.yexp ?? np?.years_of_experience ?? null,
     depth: sp?.depth ?? null, active: sp ? sp.active : true, seasons: {},
   };
 }
@@ -193,5 +194,12 @@ for (const season of seasonsDesc) {
   fs.writeFileSync(path.join(OUT, `logs_${season}.json`), JSON.stringify(obj));
 }
 fs.writeFileSync(path.join(OUT, 'idmap.json'), JSON.stringify({ fp2sid }));
+// ---------- college football + prospects ----------
+try {
+  log('College football & prospects…');
+  await buildCollege({ current: CURRENT, nflBy, gsis2sid, out: OUT, log });
+} catch (e) {
+  log('  college data unavailable this run (NFL data still built):', e.message);
+}
 const size = fs.statSync(path.join(OUT, 'players.json')).size;
 log(`Done. ${list.length} players → data/out/players.json (${(size / 1e6).toFixed(2)} MB)`);

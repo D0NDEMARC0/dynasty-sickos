@@ -44,7 +44,7 @@ export async function idMap() {
 
 export async function nflPlayers() {
   const p = await nflverse('players', 'players.parquet', 24 * 3);
-  return readParquet(p, ['gsis_id', 'display_name', 'position', 'birth_date', 'pfr_id', 'pff_id', 'headshot', 'latest_team',
+  return readParquet(p, ['gsis_id', 'display_name', 'position', 'birth_date', 'pfr_id', 'pff_id', 'espn_id', 'headshot', 'latest_team',
     'rookie_season', 'last_season', 'draft_year', 'draft_round', 'draft_pick', 'college_name', 'height', 'weight', 'status', 'years_of_experience']);
 }
 

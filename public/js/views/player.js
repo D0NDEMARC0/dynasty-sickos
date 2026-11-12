@@ -4,6 +4,7 @@ import { M, PROFILE, metricValue } from '../metrics.js';
 import { esc, fmtInt, fmt1, fmtPct, headshot, injTag, signalTag, tipRows, table } from '../ui.js';
 import { columns, pctBars } from '../charts.js';
 import { mount, isRookie } from './common.js';
+import { loadProspects, prospectByCid, CM, fmtC } from '../college.js';
 
 export async function render(root, params, query) {
   rows();
@@ -55,13 +56,15 @@ export async function render(root, params, query) {
     </div>
     <div class="card"><h2>Season history</h2><div class="tablewrap" style="box-shadow:none">${history(p, years)}</div></div>
     <div class="card"><h2>Game log · ${season}</h2><div class="tablewrap" style="box-shadow:none" data-log><span class="spinner"></span></div></div>`
-    : '<div class="card empty">No NFL stats yet — value is driven by market price and age.</div>'}`;
+    : '<div class="card empty">No NFL stats yet — value is driven by market price and age.</div>'}
+    <div data-college></div>`;
 
   el.addEventListener('click', e => {
     const b = e.target.closest('.seg[data-k="season"] button');
     if (b) location.hash = `#/player/${encodeURIComponent(p.id)}?season=${b.dataset.v}`;
   });
 
+  collegeCard(el.querySelector('[data-college]'), p);
   if (!season) return;
   const logs = await loadLogs(season);
   const games = logs[p.id] || [];
@@ -78,6 +81,31 @@ export async function render(root, params, query) {
     + `<div class="muted small">${scoringLabel()}${S.settings.scoring === 'league' ? ' (weekly bars exclude fumbles, 2-pt and first-down bonuses)' : ''} · line = season average · hover a week for details</div>`;
   const lg = el.querySelector('[data-log]');
   if (lg) lg.innerHTML = gameLog(p, games);
+}
+
+/** College career summary for players we have college data for (recent draft classes). */
+async function collegeCard(box, p) {
+  if (!box || !p.espn) return;
+  let data;
+  try { data = await loadProspects(); } catch { return; }
+  const career = data.careers[p.espn] || [];
+  const pr = prospectByCid(p.espn);
+  if (!career.length && !pr) return;
+  const keys = { WR: ['rec', 'reyd', 'retd', 'tsh', 'dom', 'yptpa', 'epat'], TE: ['rec', 'reyd', 'retd', 'tsh', 'dom', 'yptpa', 'epat'],
+    RB: ['car', 'ruyd', 'rutd', 'ypc', 'reyd', 'scsh', 'epar'], QB: ['pa', 'pyd', 'ptd', 'int', 'ypa', 'epap', 'cpoe'] }[p.pos] || [];
+  const cols = [
+    { key: 's', label: 'Season', cell: s => `<td>${s.season}</td>` },
+    { key: 't', label: 'School', cell: s => `<td>${esc(s.team || '—')}</td>` },
+    { key: 'c', label: 'Class', cell: s => `<td>${esc(s.cls || '—')}</td>` },
+    ...keys.map(k => ({ key: k, label: CM[k].label, n: true, title: CM[k].desc, cell: s => `<td class="n">${fmtC(k, s[k])}</td>` })),
+  ];
+  const facts = pr ? [`Prospect score <b>${pr.score ?? '—'}</b> (${pr.draftClass} class)`,
+    pr.brk?.season ? `broke out in ${pr.brk.season} as a ${esc(pr.brk.cls || '')}${pr.brk.age ? ` at ${pr.brk.age}` : ''}` : null,
+    pr.recruit ? `${'★'.repeat(pr.recruit.stars || 0)} recruit` : null,
+    pr.combine?.forty ? `${pr.combine.forty}s 40` : null].filter(Boolean).join(' · ') : '';
+  box.innerHTML = `<div class="card"><div class="chart-head"><h2 style="margin:0">College career</h2><a class="btn" href="#/college/player/${p.espn}">Full college profile →</a></div>
+    ${facts ? `<p class="small" style="margin:0 0 10px">${facts}</p>` : ''}
+    ${career.length ? `<div class="tablewrap" style="box-shadow:none">${table({ cols, rows: career })}</div>` : ''}</div>`;
 }
 
 function percentiles(p, s) {
