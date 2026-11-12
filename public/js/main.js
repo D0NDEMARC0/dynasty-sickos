@@ -9,6 +9,7 @@ import * as about from './views/about.js';
 import * as prospects from './views/prospects.js';
 import * as college from './views/college.js';
 import * as collegePlayer from './views/collegePlayer.js';
+import * as matchups from './views/matchups.js';
 
 const app = document.getElementById('app');
 const banner = document.getElementById('banner');
@@ -23,6 +24,7 @@ function parse() {
   if (parts[0] === 'prospects') return { name: 'prospects', view: prospects, params: {}, query };
   if (parts[0] === 'college' && parts[1] === 'player' && parts[2]) return { name: 'college', view: collegePlayer, params: { cid: parts[2] }, query };
   if (parts[0] === 'college') return { name: 'college', view: college, params: {}, query };
+  if (parts[0] === 'matchups') return { name: 'matchups', view: matchups, params: {}, query };
   if (parts[0] === 'about') return { name: 'about', view: about, params: {}, query };
   return { name: 'rankings', view: rankings, params: {}, query };
 }

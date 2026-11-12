@@ -8,6 +8,8 @@ const int = v => (v == null ? '—' : Math.round(v).toLocaleString());
 export const M = {
   // fantasy
   ppg: { label: 'PPG', fmt: d1, desc: 'Fantasy points per game in the selected scoring format', src: 'nflverse' },
+  xfp: { label: 'xFP/G', fmt: d1, desc: 'Expected PPR fantasy points per game: what an average player would score with the same opportunities (targets by depth and location, carries by field position, pass attempts). Volume and role, minus luck', src: 'ffopportunity (ffverse)' },
+  fpoe: { label: 'FPOE/G', fmt: sgn(d1), desc: 'PPR fantasy points over expected per game (actual − expected). Positive = scored more than the opportunities usually produce; big gaps in either direction tend to shrink', src: 'ffopportunity (ffverse)' },
   // usage
   routes: { label: 'Routes', fmt: int, desc: 'Routes run. 2023–25: on-field dropbacks from participation data × position route rate. Current season: estimated from snap share × team dropbacks (see Methodology).', src: 'nflverse' },
   rp: { label: 'Route %', fmt: pct, desc: 'Route participation: routes ÷ team dropbacks in games played', src: 'nflverse' },
@@ -99,18 +101,18 @@ export const LOWER_BETTER = new Set(['drop', 'stuff', 'skr', 'twp', 'press', 'ba
 
 // Column sets for the analytics explorer, per position. Imported columns appear only when data exists.
 export const COLUMNS = {
-  WR: ['ppg', 'routes', 'rp', 'tsh', 'aysh', 'wopr', 'tprr', 'yprr', 'yprrMan', 'yprrZone', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'btr', 'rzTgt', 'x_grade', 'x_routeGrade', 'x_winRate', 'score'],
-  TE: ['ppg', 'routes', 'rp', 'tsh', 'aysh', 'tprr', 'yprr', 'yprrMan', 'yprrZone', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rzTgt', 'ezTgt', 'x_grade', 'x_routeGrade', 'score'],
-  RB: ['ppg', 'csh', 'osh', 'tsh', 'hvtpg', 'ypc', 'exp10', 'exp15', 'stuff', 'succ', 'ryoe', 'ryoepct', 'yaco', 'ybco', 'btr', 'box8', 'epar', 'routes', 'yprr', 'rzCar', 'i5', 'x_grade', 'x_runGrade', 'x_elusive', 'score'],
-  QB: ['ppg', 'db', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ttt', 'aggr', 'par', 'ratt', 'rypc', 'ruypg', 'scr', 'x_grade', 'x_passGrade', 'x_btt', 'score'],
+  WR: ['ppg', 'xfp', 'fpoe', 'routes', 'rp', 'tsh', 'aysh', 'wopr', 'tprr', 'yprr', 'yprrMan', 'yprrZone', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'btr', 'rzTgt', 'x_grade', 'x_routeGrade', 'x_winRate', 'score'],
+  TE: ['ppg', 'xfp', 'fpoe', 'routes', 'rp', 'tsh', 'aysh', 'tprr', 'yprr', 'yprrMan', 'yprrZone', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rzTgt', 'ezTgt', 'x_grade', 'x_routeGrade', 'score'],
+  RB: ['ppg', 'xfp', 'fpoe', 'csh', 'osh', 'tsh', 'hvtpg', 'ypc', 'exp10', 'exp15', 'stuff', 'succ', 'ryoe', 'ryoepct', 'yaco', 'ybco', 'btr', 'box8', 'epar', 'routes', 'yprr', 'rzCar', 'i5', 'x_grade', 'x_runGrade', 'x_elusive', 'score'],
+  QB: ['ppg', 'xfp', 'fpoe', 'db', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ttt', 'aggr', 'par', 'ratt', 'rypc', 'ruypg', 'scr', 'x_grade', 'x_passGrade', 'x_btt', 'score'],
 };
 
 // Percentile bars on the player page.
 export const PROFILE = {
-  WR: ['yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade', 'x_winRate'],
-  TE: ['yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade'],
-  RB: ['osh', 'csh', 'tsh', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
-  QB: ['epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
+  WR: ['xfp', 'fpoe', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade', 'x_winRate'],
+  TE: ['xfp', 'fpoe', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade'],
+  RB: ['xfp', 'fpoe', 'osh', 'csh', 'tsh', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
+  QB: ['xfp', 'fpoe', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
 };
 
 export const SCATTER_DEFAULT = { WR: ['tprr', 'yprr'], TE: ['tprr', 'yprr'], RB: ['osh', 'exp10'], QB: ['cpoe', 'epadb'] };

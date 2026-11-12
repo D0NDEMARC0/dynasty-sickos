@@ -47,7 +47,10 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
 - **Rankings** – dynasty value per player: market value (FantasyCalc + DynastyProcess), Analytics Score, age window,
   and ▲ Buy / ▼ Sell signals where fundamentals and price disagree. Tune the analytics weight and an age tilt.
 - **Analytics** – per-position leaderboards (WR, RB, TE, QB) with percentile shading and an X/Y scatter of any two metrics,
-  including YPRR and TPRR vs man and vs zone coverage (2023 onward, from nflverse coverage tags).
+  including YPRR and TPRR vs man and vs zone coverage (2023 onward, from nflverse coverage tags) and expected fantasy
+  points (xFP) / points over expected (FPOE).
+- **Matchups** – fantasy points allowed by every defense to QBs, RBs, WRs and TEs (your scoring), run/pass funnel
+  defenses, man/zone coverage rates, and offensive lines (sack, hit and pressure rates, RB yards before contact).
 - **Player pages** – percentile bars, weekly fantasy points, season history, game log, and college career.
 - **Prospects** – a **big board** for the next draft class (every FBS QB/RB/WR/TE who's draft-eligible, tiered by
   rookie-draft round, with a projected NFL pick from a draft-capital model trained on recent drafts), plus the
@@ -73,6 +76,7 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
 | FTN charting (via nflverse) | drops, contested/catchable targets, screens, play-action |
 | Pro Football Reference (via nflverse) | yards before/after contact, broken tackles, bad throws, pressures |
 | sportsdataverse (ESPN college data) | college play-by-play + advanced stats (EPA, success rate, explosive runs, shares, CPOE), rosters, recruiting |
+| ffopportunity (ffverse) | expected fantasy points (xFP) and points over expected |
 | FantasyPros via DynastyProcess, Sleeper | dynasty rookie expert rankings; rookie and startup ADP from real drafts |
 | nflverse combine & draft picks | athletic testing and draft capital for the Prospect Score |
 | FantasyCalc, DynastyProcess | dynasty market values and rookie pick values |

@@ -262,3 +262,8 @@ table.data tbody tr.tierrow:hover td { background: var(--surface-2); }
 .boards details summary { cursor: pointer; color: var(--ink-2); }
 .linkbtn { background: none; border: 0; padding: 0 0 0 6px; color: var(--accent-ink); cursor: pointer; font-size: 12px; }
 .linkbtn:hover { text-decoration: underline; }
+
+/* matchups: funnel tags */
+.tag.funnel { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; letter-spacing: 0; }
+.tag.funnel.run { background: color-mix(in oklab, var(--good-ink) 16%, transparent); color: var(--good-ink); }
+.tag.funnel.pass { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent-ink); }

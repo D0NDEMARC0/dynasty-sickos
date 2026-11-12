@@ -58,7 +58,7 @@ export async function nflPlayers() {
 const PBP_COLS = ['game_id', 'play_id', 'season', 'week', 'season_type', 'posteam', 'play_type', 'pass_attempt', 'rush_attempt',
   'sack', 'qb_dropback', 'qb_scramble', 'qb_spike', 'qb_kneel', 'passer_player_id', 'receiver_player_id', 'rusher_player_id',
   'air_yards', 'yards_after_catch', 'receiving_yards', 'rushing_yards', 'yards_gained', 'complete_pass', 'interception',
-  'touchdown', 'td_player_id', 'epa', 'qb_epa', 'success', 'first_down', 'yardline_100', 'two_point_attempt', 'cpoe'];
+  'touchdown', 'td_player_id', 'epa', 'qb_epa', 'success', 'first_down', 'yardline_100', 'two_point_attempt', 'cpoe', 'defteam', 'qb_hit'];
 
 export async function pbp(season, current) {
   const p = await nflverse('pbp', `play_by_play_${season}.parquet`, ttl(season, current));
@@ -104,6 +104,25 @@ export async function weeklyStats(season, current) {
     'rushing_fumbles_lost', 'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'receiving_first_downs', 'receiving_2pt_conversions',
     'receiving_fumbles_lost', 'sack_fumbles_lost', 'special_teams_tds', 'fantasy_points', 'fantasy_points_ppr']);
   return rows.filter(r => r.season_type === 'REG' && ['QB', 'RB', 'WR', 'TE', 'FB'].includes(r.position));
+}
+
+/**
+ * Expected fantasy points (ffopportunity, from the ffverse project — open data, updated weekly in season).
+ * PPR: what an average player would score with the same targets (by depth) and carries (by field position).
+ * Regular season only (weeks 1–18). Returns Map(gsis -> { fp, xfp }).
+ */
+export async function expectedPoints(season, current) {
+  const f = await cached(`https://github.com/ffverse/ffopportunity/releases/download/latest-data/ep_weekly_${season}.parquet`, `ep_weekly_${season}.parquet`, ttl(season, current));
+  if (!f) return null;
+  const rows = await readParquet(f, ['player_id', 'week', 'total_fantasy_points', 'total_fantasy_points_exp']);
+  const m = new Map();
+  for (const r of rows) {
+    if (!r.player_id || r.week > 18) continue;
+    const o = m.get(r.player_id) || { fp: 0, xfp: 0 };
+    o.fp += r.total_fantasy_points ?? 0; o.xfp += r.total_fantasy_points_exp ?? 0;
+    m.set(r.player_id, o);
+  }
+  return m;
 }
 
 export async function ngs(kind) {

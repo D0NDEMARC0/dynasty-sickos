@@ -8,6 +8,7 @@ import { buildSeason, ROUTE_RATE } from './season.mjs';
 import { scoreSeason, blendScores, MODEL } from './score.mjs';
 import { loadImports, applyImport, nameKey } from './imports.mjs';
 import { buildCollege } from './college.mjs';
+import { teamSeason, assembleTeams } from './teams.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, '..', 'data', 'out');
@@ -98,6 +99,7 @@ const [ngsRec, ngsRush, ngsPass] = await Promise.all([L.ngs('receiving'), L.ngs(
 
 const seasonOut = {};   // season -> Map(gsis -> stats)
 const logsOut = {};
+const teamStats = {};   // season -> team matchup stats
 const meta = { seasons: SEASONS, current: CURRENT, week: state.week, teamGames: {}, routeSource: {}, routeDiag: {} };
 let priorSkew = null, priorPosSkew = null;
 
@@ -126,6 +128,12 @@ for (const season of SEASONS) {
   let applied = 0;
   for (const [g, s] of res.players) { const ext = imports.rows.get(g)?.get(season); if (ext) { applyImport(s, ext); applied++; } }
   if (applied) log(`  applied imported data to ${applied} players`);
+  // expected fantasy points (ffopportunity, PPR) and points over expected, per game
+  const ep = await L.expectedPoints(season, CURRENT).catch(e => { log('  expected points unavailable:', e.message); return null; });
+  let xn = 0;
+  if (ep) for (const [g, e] of ep) { const s = res.players.get(g); if (!s?.g) continue; s.xfp = r2(e.xfp / s.g); s.fpoe = r2((e.fp - e.xfp) / s.g); xn++; }
+  if (ep) log(`  expected fantasy points: ${xn} players`);
+  teamStats[season] = teamSeason({ plays, weekly, part, players: res.players, adv, pfr2gsis, posOf });
   scoreSeason(res.players, posOf, res.teamGames);
   seasonOut[season] = res.players;
   logsOut[season] = res.logs;
@@ -194,6 +202,10 @@ for (const season of seasonsDesc) {
   fs.writeFileSync(path.join(OUT, `logs_${season}.json`), JSON.stringify(obj));
 }
 fs.writeFileSync(path.join(OUT, 'idmap.json'), JSON.stringify({ fp2sid }));
+// team matchups: fantasy points allowed, funnels, coverage, offensive lines
+const teamsOut = assembleTeams(teamStats, CURRENT);
+fs.writeFileSync(path.join(OUT, 'teams.json'), JSON.stringify({ ...teamsOut, generated: new Date().toISOString() }));
+log(`Team matchups: ${Object.keys(teamsOut.teams).length} teams (${teamsOut.season}; coverage ${teamsOut.covSeason ?? '—'}, pressure ${teamsOut.pressSeason ?? '—'})`);
 // ---------- college football + prospects ----------
 try {
   log('College football & prospects…');
