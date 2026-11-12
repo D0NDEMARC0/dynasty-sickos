@@ -3,13 +3,15 @@
 // Free, keyless sources: sportsdataverse (ESPN college data incl. EPA) + nflverse (combine, draft picks, players).
 import fs from 'node:fs';
 import path from 'node:path';
-import { cached, nflverse } from './fetch.mjs';
+import { cached, cachedJSON, nflverse, readCSV } from './fetch.mjs';
 import { readParquet } from './load.mjs';
 import { nameKey } from './imports.mjs';
 
 const SDV = 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download';
 const SKILL = new Set(['QB', 'RB', 'WR', 'TE']);
 const CLASS_NUM = { FR: 1, SO: 2, JR: 3, SR: 4 };
+// College route data isn't public: estimated routes = team dropbacks in games played x position route rate.
+export const COLLEGE_ROUTE_RATE = { WR: 0.95, TE: 0.8, RB: 0.55, QB: 0 };
 const num = v => { if (v == null || v === '') return 0; const n = typeof v === 'number' ? v : Number(String(v).replace(/,/g, '')); return Number.isFinite(n) ? n : 0; };
 const rd = (x, d = 3) => (x == null || !Number.isFinite(x) ? null : Math.round(x * 10 ** d) / 10 ** d);
 const div = (a, b) => (b > 0 ? a / b : null);
@@ -51,7 +53,7 @@ async function loadSeason(season, current) {
     t.games.add(r.game_id);
     if (!['passing', 'rushing', 'receiving'].includes(r.category)) continue;
     const o = get(id);
-    o.games.add(r.game_id); o.teams[tid] = (o.teams[tid] || 0) + 1; o.name ||= r.athlete_name;
+    o.games.add(r.game_id); o.teams[tid] = (o.teams[tid] || 0) + 1; o.name ||= r.athlete_name; (o.gt ||= {})[r.game_id] = tid;
     nameToId.set(`${nameKey(r.athlete_name)}|${tid}`, id);
     if (r.category === 'passing') {
       const [c, a] = String(r['completions/passingAttempts'] || '0/0').split('/').map(num);
@@ -66,7 +68,7 @@ async function loadSeason(season, current) {
   }
   for (const u of usage) {
     const id = String(u.player_id), o = get(id), tid = String(u.pos_team_id);
-    o.games.add(u.game_id); o.teams[tid] = (o.teams[tid] || 0) + 1; o.name ||= u.player_name; o.group ||= u.position_group;
+    o.games.add(u.game_id); o.teams[tid] = (o.teams[tid] || 0) + 1; o.name ||= u.player_name; o.group ||= u.position_group; (o.gt ||= {})[u.game_id] ||= tid;
     nameToId.set(`${nameKey(u.player_name)}|${tid}`, id);
     o.uTargets += num(u.targets); o.uRushes += num(u.rushes); o.tch += num(u.touches);
     o.opp += num(u.opportunities); o.exp += num(u.explosive_plays); o.succ += num(u.successful_plays); o.epa += num(u.epa);
@@ -96,6 +98,31 @@ async function loadSeason(season, current) {
   let lc = 0, lx = 0, la = 0;
   for (const r of pass) { lc += num(r.Comp); lx += num(r.xComp); la += num(r.Att); }
   const leagueCpoe = la ? ((lc - lx) / la) * 100 : 0;
+  // ---- play-by-play: explosive runs, stuffs, breakaway yards, line yards, explosive catches, deep targets, team dropbacks
+  const pbp = await sdv('espn_cfb_pbp', `play_by_play_${season}.parquet`, season, current,
+    ['game_id', 'pos_team_id', 'rush', 'pass', 'target', 'completion', 'kneel_down', 'rusher_player_id', 'receiver_player_id',
+      'yds_rushed', 'yds_receiving', 'air_yards', 'line_yards', 'firstD_by_yards']);
+  const drop = new Map(); // game|team -> dropbacks
+  for (const r of pbp) {
+    const key = `${r.game_id}|${String(r.pos_team_id)}`;
+    if (r.pass) drop.set(key, (drop.get(key) || 0) + 1);
+    if (r.rush && !r.kneel_down && r.rusher_player_id != null) {
+      const o = get(String(r.rusher_player_id)), y = num(r.yds_rushed);
+      o.pCar = (o.pCar || 0) + 1; o.pRuYd = (o.pRuYd || 0) + y;
+      if (y >= 10) o.r10 = (o.r10 || 0) + 1;
+      if (y >= 15) { o.r15 = (o.r15 || 0) + 1; o.y15 = (o.y15 || 0) + y; }
+      if (y <= 0) o.stf = (o.stf || 0) + 1;
+      if (r.line_yards != null) { o.lyN = (o.lyN || 0) + 1; o.ly = (o.ly || 0) + num(r.line_yards); }
+    }
+    if (r.target && r.receiver_player_id != null) {
+      const o = get(String(r.receiver_player_id)), y = num(r.yds_receiving);
+      o.pTgt = (o.pTgt || 0) + 1;
+      if (r.completion && y >= 20) o.c20 = (o.c20 || 0) + 1;
+      if (r.completion && r.firstD_by_yards) o.fd = (o.fd || 0) + 1;
+      if (r.air_yards != null) { o.airN2 = (o.airN2 || 0) + 1; if (num(r.air_yards) >= 20) o.deepT = (o.deepT || 0) + 1; }
+    }
+  }
+
   const R = new Map(roster.map(r => [String(r.athlete_id), r]));
   // league context: typical number of team games so far (for prorated volume thresholds)
   const fbsTeams = new Set(roster.filter(r => r.division === 'fbs').map(r => String(r.team_id)));
@@ -113,6 +140,9 @@ async function loadSeason(season, current) {
     const g = o.games.size;
     const tgt = Math.max(o.uTargets, o.aTgt || 0);
     const ysh = div(o.reyd, t.recYds), tdsh = div(o.retd, t.recTd);
+    let teamDb = 0;
+    for (const gm of o.games) { const tm = o.gt?.[gm]; if (tm) teamDb += drop.get(`${gm}|${tm}`) || 0; }
+    const routes = teamDb * (COLLEGE_ROUTE_RATE[pos] || 0);
     const s = {
       season, cid: id, name: ro?.full_name || o.name, pos, team: ro?.team_location || null, tid, div: ro?.division || null,
       cls: ro?.experience_abbreviation || null, ht: ro?.height ?? null, wt: ro?.weight ?? null, g,
@@ -131,6 +161,11 @@ async function loadSeason(season, current) {
       cpoe: rd(o.aAtt ? ((o.aComp - o.aXComp) / o.aAtt) * 100 - leagueCpoe : null, 1), psr: rd(div(o.aPassSr, (o.aAtt || 0) + (o.aSk || 0))),
       skr: rd(div(o.aSk, (o.aAtt || 0) + (o.aSk || 0))), padot: rd(div(o.pAir, o.pAirAtt), 1),
       rzt: o.rzt, rzr: o.rzr, rztd: o.rztd,
+      // play-by-play metrics
+      exp10: rd(div(o.r10 || 0, o.pCar)), exp15: rd(div(o.r15 || 0, o.pCar)), stuff: rd(div(o.stf || 0, o.pCar)),
+      brk: rd(o.pRuYd > 0 ? (o.y15 || 0) / o.pRuYd : null), lypc: rd(div(o.ly, o.lyN), 2),
+      rec20r: rd(div(o.c20 || 0, o.pTgt)), deep: rd(div(o.deepT || 0, o.airN2)), fdt: rd(div(o.fd || 0, o.pTgt)),
+      routes: routes ? Math.round(routes) : null, yprr: rd(div(o.reyd, routes), 2), tprr: rd(div(tgt, routes)),
       hs: ro?.headshot_href || null, dob: ro?.date_of_birth || null,
       recruitId: ro?.cfbd_recruit_ids ? String(ro.cfbd_recruit_ids).replace(/[^0-9,]/g, '').split(',')[0] || null : null,
     };
@@ -144,12 +179,12 @@ const VOL = { WR: s => s.tgt, TE: s => s.tgt, RB: s => s.car + s.tgt, QB: s => s
 const SHOW = { WR: 2, TE: 1.5, RB: 4, QB: 8 };
 const QUAL = { WR: 3.5, TE: 2.5, RB: 7, QB: 15 };
 export const COLLEGE_PCT = {
-  WR: ['tsh', 'ysh', 'dom', 'yptpa', 'ypt', 'ypr', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'scpg', 'rztd'],
-  TE: ['tsh', 'ysh', 'dom', 'yptpa', 'ypt', 'ypr', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'scpg', 'rztd'],
-  RB: ['csh', 'scsh', 'tch', 'tsh', 'ypc', 'epar', 'rusr', 'exp', 'epao', 'scpg', 'ypt', 'rztd'],
+  WR: ['tsh', 'ysh', 'dom', 'yptpa', 'yprr', 'tprr', 'ypt', 'ypr', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'rec20r', 'deep', 'fdt', 'scpg', 'rztd'],
+  TE: ['tsh', 'ysh', 'dom', 'yptpa', 'yprr', 'tprr', 'ypt', 'ypr', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'rec20r', 'deep', 'fdt', 'scpg', 'rztd'],
+  RB: ['csh', 'scsh', 'tch', 'tsh', 'ypc', 'epar', 'rusr', 'exp', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epao', 'scpg', 'ypt', 'yprr', 'rztd'],
   QB: ['epap', 'cpoe', 'ypa', 'psr', 'skr', 'padot', 'rypg', 'epao'],
 };
-const LOWER = new Set(['skr']);
+const LOWER = new Set(['skr', 'stuff']);
 
 function midRankFn(values) {
   const sorted = values.filter(v => v != null && Number.isFinite(v)).sort((a, b) => a - b);
@@ -180,12 +215,13 @@ const htIn = h => { if (h == null) return null; if (typeof h === 'number') retur
 const draftCapital = pick => (pick ? Math.round(100 * Math.exp(-(pick - 1) / 45)) : null);
 // production features per position: [season metric, weight]
 const PROD = {
-  WR: [['dom', 0.35], ['tsh', 0.2], ['yptpa', 0.2], ['epat', 0.1], ['exp', 0.15]],
-  TE: [['dom', 0.35], ['tsh', 0.2], ['yptpa', 0.2], ['epat', 0.1], ['exp', 0.15]],
-  RB: [['scsh', 0.3], ['scpg', 0.2], ['tsh', 0.2], ['exp', 0.15], ['epar', 0.15]],
+  WR: [['dom', 0.3], ['yprr', 0.2], ['tsh', 0.15], ['yptpa', 0.15], ['epat', 0.1], ['rec20r', 0.1]],
+  TE: [['dom', 0.3], ['yprr', 0.2], ['tsh', 0.15], ['yptpa', 0.15], ['epat', 0.1], ['rec20r', 0.1]],
+  RB: [['scsh', 0.25], ['scpg', 0.15], ['tsh', 0.15], ['exp10', 0.15], ['epar', 0.15], ['brk', 0.15]],
   QB: [['epap', 0.35], ['cpoe', 0.2], ['ypa', 0.15], ['rypg', 0.15], ['psr', 0.15]],
 };
-const BREAKOUT = { WR: ['dom', 0.2], TE: ['dom', 0.15], RB: ['scsh', 0.2] };
+// thresholds calibrated so a similar share of day 1–2 NFL draft picks clears each (~75–90%)
+const BREAKOUT = { WR: ['dom', 0.2], TE: ['dom', 0.12], RB: ['scsh', 0.2] };
 export const PROSPECT_WEIGHTS = {
   pre: { prod: 0.55, brk: 0.15, ath: 0.15, age: 0.1, rec: 0.05 },
   drafted: { dc: 0.4, prod: 0.35, brk: 0.1, ath: 0.1, age: 0.05 },
@@ -368,6 +404,8 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     }
   }
 
+  await attachMarket(prospects, { current, log });
+
   // the pre-combine watch list can be long; keep the strongest 300
   const watch = prospects.filter(p => p.status === 'watch').sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   const dropped = new Set(watch.slice(300));
@@ -393,4 +431,54 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
   fs.writeFileSync(path.join(out, 'prospects.json'), JSON.stringify({ meta, prospects, careers }));
   log(`  prospects: ${Object.entries(classes).map(([y, c]) => `${y} ${c.status} (${c.count})`).join(', ')}`);
   return meta;
+}
+
+// ---------------------------------------------------------------- consensus rookie rankings + ADP
+async function attachMarket(prospects, { current, log }) {
+  const byName = new Map();
+  for (const p of prospects) {
+    const k = `${nameKey(p.name)}|${p.pos}`;
+    if (!byName.has(k)) byName.set(k, []);
+    byName.get(k).push(p);
+  }
+  const match = (name, pos) => (byName.get(`${nameKey(name)}|${posOf(pos)}`) || []).sort((a, b) => b.draftClass - a.draftClass)[0] || null;
+  // FantasyPros dynasty rookie rankings (expert consensus), published weekly by DynastyProcess
+  try {
+    const f = await cached('https://github.com/dynastyprocess/data/raw/master/files/db_fpecr_latest.csv', 'db_fpecr_latest.csv', 24);
+    const rows = readCSV(f).filter(r => r.fp_page === '/nfl/rankings/rookies.php');
+    // FantasyPros ranks one class at a time; attach only to the class most of its players belong to
+    const cands = rows.map(r => ({ r, list: byName.get(`${nameKey(r.player)}|${posOf(r.pos)}`) || [] }));
+    const votes = {};
+    for (const { list } of cands) for (const p of list) votes[p.draftClass] = (votes[p.draftClass] || 0) + 1;
+    const fpClass = Number(Object.entries(votes).sort((a, b) => b[1] - a[1])[0]?.[0]);
+    let n = 0;
+    for (const { r, list } of cands) {
+      const p = list.find(x => x.draftClass === fpClass);
+      if (!p) continue;
+      p.ecr = { rank: r.ecr, sd: r.sd, best: r.best, worst: r.worst, date: r.scrape_date };
+      n++;
+    }
+    log(`  FantasyPros rookie rankings (${fpClass} class): ${n} of ${rows.length} matched`);
+  } catch (e) { log('  FantasyPros rookie rankings unavailable:', e.message); }
+  // Sleeper ADP from real drafts (rookie drafts + dynasty startups); empty until drafts happen
+  try {
+    const bySid = new Map(prospects.filter(p => p.sid).map(p => [String(p.sid), p]));
+    let n = 0;
+    for (const yr of [current, current + 1]) {
+      const rows = await cachedJSON(`https://api.sleeper.com/projections/nfl/${yr}?season_type=regular&position[]=QB&position[]=RB&position[]=WR&position[]=TE`, `sleeper_proj_${yr}.json`, 24);
+      for (const x of Array.isArray(rows) ? rows : []) {
+        const st = x.stats || {}, a = v => (v != null && v < 999 ? v : null);
+        const adp = { rookie: a(st.adp_rookie), d1qb: a(st.adp_dynasty_ppr), dsf: a(st.adp_dynasty_2qb) };
+        if (adp.rookie == null && adp.d1qb == null && adp.dsf == null) continue;
+        // name fallback only for rookie-level players, so a veteran never lends ADP to a same-named prospect
+        const rookieLike = x.player?.years_exp == null || x.player.years_exp <= 0;
+        const p = bySid.get(String(x.player_id)) || (rookieLike ? match(`${x.player?.first_name} ${x.player?.last_name}`, x.player?.position) : null);
+        if (!p) continue;
+        p.adp = { ...(p.adp || {}), ...Object.fromEntries(Object.entries(adp).filter(([, v]) => v != null)) };
+        if (!p.sid && x.player_id) p.sid = String(x.player_id);
+        n++;
+      }
+    }
+    log(`  Sleeper ADP: ${n} prospects with ADP`);
+  } catch (e) { log('  Sleeper ADP unavailable:', e.message); }
 }

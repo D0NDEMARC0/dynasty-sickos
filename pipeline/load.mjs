@@ -7,6 +7,13 @@ import { nflverse, cached, cachedJSON, readCSV } from './fetch.mjs';
 const fix = v => (typeof v === 'bigint' ? Number(v) : v);
 const clean = rows => rows.map(r => { for (const k in r) r[k] = fix(r[k]); return r; });
 
+/** Column names of a parquet file (reads only the footer). */
+export async function parquetColumns(path) {
+  const { parquetMetadataAsync } = await import('hyparquet');
+  const md = await parquetMetadataAsync(await asyncBufferFromFile(path));
+  return md.schema.slice(1).filter(s => !s.num_children).map(s => s.name);
+}
+
 export async function readParquet(path, columns) {
   const file = await asyncBufferFromFile(path);
   return clean(await parquetReadObjects({ file, columns, compressors }));

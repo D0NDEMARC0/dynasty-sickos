@@ -48,6 +48,17 @@ export const CM = {
   psr: { label: 'Success %', fmt: pct, desc: 'Share of dropbacks with positive EPA' },
   skr: { label: 'Sack %', fmt: pct, desc: 'Sacks ÷ dropbacks (lower is better)' },
   padot: { label: 'aDOT', fmt: d1, desc: 'Average depth of target on attempts (where charted)' },
+  exp10: { label: 'Explosive run %', fmt: pct, desc: 'Runs of 10+ yards ÷ carries (from play-by-play)' },
+  exp15: { label: '15+ run %', fmt: pct, desc: 'Runs of 15+ yards ÷ carries' },
+  stuff: { label: 'Stuff %', fmt: pct, desc: 'Runs stopped at or behind the line ÷ carries (lower is better)' },
+  brk: { label: 'Breakaway %', fmt: pct, desc: 'Share of rushing yards gained on 15+ yard runs' },
+  lypc: { label: 'Line yds/car', fmt: d2, desc: 'Line yards per carry — yards credited near the line of scrimmage (ESPN formula)' },
+  rec20r: { label: 'Explosive catch %', fmt: pct, desc: 'Catches of 20+ yards ÷ targets' },
+  deep: { label: 'Deep tgt %', fmt: pct, desc: 'Targets 20+ air yards downfield ÷ charted targets (air yards are charted on ~40% of college passes)' },
+  fdt: { label: '1D/tgt', fmt: pct, desc: 'First downs per target' },
+  routes: { label: 'Routes (est.)', fmt: int, desc: 'Estimated routes: team dropbacks in games played × position route rate (WR 95%, TE 80%, RB 55%) — college route charting isn’t public' },
+  yprr: { label: 'YPRR (est.)', fmt: d2, desc: 'Receiving yards per estimated route run. College route data isn’t public, so routes are estimated from team dropbacks in games played; it assumes a full-time role, so part-time players read low' },
+  tprr: { label: 'TPRR (est.)', fmt: pct, desc: 'Targets per estimated route run' },
   rzt: { label: 'RZ tgt', fmt: int, desc: 'Red-zone targets' },
   rzr: { label: 'RZ car', fmt: int, desc: 'Red-zone carries' },
   rztd: { label: 'RZ TD', fmt: int, desc: 'Red-zone touchdowns' },
@@ -55,16 +66,16 @@ export const CM = {
 for (const m of Object.values(CM)) m.src = SRC;
 
 export const C_COLUMNS = {
-  WR: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'rztd'],
-  TE: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'rztd'],
-  RB: ['g', 'car', 'ruyd', 'rutd', 'ypc', 'rec', 'reyd', 'csh', 'scsh', 'tsh', 'epar', 'rusr', 'exp', 'scpg', 'rztd'],
+  WR: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
+  TE: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
+  RB: ['g', 'car', 'ruyd', 'rutd', 'ypc', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epar', 'rusr', 'csh', 'scsh', 'tsh', 'rec', 'reyd', 'yprr', 'scpg', 'rztd'],
   QB: ['g', 'pa', 'pyd', 'ptd', 'int', 'ypa', 'epap', 'cpoe', 'psr', 'skr', 'padot', 'ruyd', 'rypg'],
 };
-export const C_SCATTER = { WR: ['tsh', 'yptpa'], TE: ['dom', 'yptpa'], RB: ['scsh', 'epar'], QB: ['cpoe', 'epap'] };
+export const C_SCATTER = { WR: ['tprr', 'yprr'], TE: ['tprr', 'yprr'], RB: ['stuff', 'exp10'], QB: ['cpoe', 'epap'] };
 export const C_PROFILE = {
-  WR: ['tsh', 'dom', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'scpg'],
-  TE: ['tsh', 'dom', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'scpg'],
-  RB: ['csh', 'scsh', 'tch', 'tsh', 'ypc', 'epar', 'rusr', 'exp', 'epao', 'scpg'],
+  WR: ['tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt'],
+  TE: ['tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt'],
+  RB: ['csh', 'scsh', 'tch', 'tsh', 'ypc', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epar', 'rusr', 'scpg', 'yprr'],
   QB: ['epap', 'cpoe', 'ypa', 'psr', 'skr', 'padot', 'rypg'],
 };
 export const COUNT_STATS = new Set(['g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'ruyd', 'rutd', 'pa', 'pyd', 'ptd', 'int', 'rzt', 'rzr', 'rztd']);
