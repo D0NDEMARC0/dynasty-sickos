@@ -84,6 +84,8 @@ export const M = {
   x_btt: { label: 'BTT %', fmt: pct, desc: 'Big-time throw rate, from your imported data', src: 'Import' },
   x_winRate: { label: 'Route win %', fmt: pct, desc: 'Route win rate, from your imported data', src: 'Import' },
   ruypg: { label: 'Rush Y/G', fmt: d1, desc: 'Rushing yards per game', src: 'nflverse' },
+  ratt: { label: 'Rush att', fmt: int, desc: 'Rushing attempts (official: includes scrambles and kneel-downs)', src: 'nflverse' },
+  rypc: { label: 'Rush YPC', fmt: d2, desc: 'Rushing yards per attempt (official, includes scrambles and kneel-downs)', src: 'nflverse' },
   scr: { label: 'Scrambles', fmt: int, desc: 'QB scrambles', src: 'nflverse' },
   dbpg: { label: 'DB/G', fmt: d1, desc: 'Dropbacks per game', src: 'nflverse' },
   score: { label: 'Score', fmt: v => (v == null ? '—' : String(v)), desc: 'Analytics Score (0–100): weighted percentile blend of the position’s most predictive metrics', src: 'Dynasty Lab' },
@@ -96,7 +98,7 @@ export const COLUMNS = {
   WR: ['ppg', 'routes', 'rp', 'tsh', 'aysh', 'wopr', 'tprr', 'yprr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'btr', 'rzTgt', 'x_grade', 'x_routeGrade', 'x_winRate', 'score'],
   TE: ['ppg', 'routes', 'rp', 'tsh', 'aysh', 'tprr', 'yprr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rzTgt', 'ezTgt', 'x_grade', 'x_routeGrade', 'score'],
   RB: ['ppg', 'csh', 'osh', 'tsh', 'hvtpg', 'ypc', 'exp10', 'exp15', 'stuff', 'succ', 'ryoe', 'ryoepct', 'yaco', 'ybco', 'btr', 'box8', 'epar', 'routes', 'yprr', 'rzCar', 'i5', 'x_grade', 'x_runGrade', 'x_elusive', 'score'],
-  QB: ['ppg', 'db', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ttt', 'aggr', 'par', 'ruypg', 'scr', 'x_grade', 'x_passGrade', 'x_btt', 'score'],
+  QB: ['ppg', 'db', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ttt', 'aggr', 'par', 'ratt', 'rypc', 'ruypg', 'scr', 'x_grade', 'x_passGrade', 'x_btt', 'score'],
 };
 
 // Percentile bars on the player page.
@@ -104,7 +106,7 @@ export const PROFILE = {
   WR: ['yprr', 'tprr', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade', 'x_winRate'],
   TE: ['yprr', 'tprr', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade'],
   RB: ['osh', 'csh', 'tsh', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
-  QB: ['epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
+  QB: ['epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
 };
 
 export const SCATTER_DEFAULT = { WR: ['tprr', 'yprr'], TE: ['tprr', 'yprr'], RB: ['osh', 'exp10'], QB: ['cpoe', 'epadb'] };

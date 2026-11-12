@@ -23,6 +23,8 @@ export const CM = {
   ysh: { label: 'Yds share', fmt: pct, desc: 'Share of team receiving yards' },
   tdsh: { label: 'TD share', fmt: pct, desc: 'Share of team receiving touchdowns' },
   dom: { label: 'Dominator', fmt: pct, desc: 'Dominator rating: average of share of team receiving yards and receiving TDs' },
+  rdom: { label: 'Dominator', fmt: pct, desc: 'RB dominator rating: average of share of team scrimmage yards and scrimmage TDs' },
+  bkAge: { label: 'Breakout age', fmt: d1, desc: 'Age at the start of the first season as a featured producer (WR 20%+ dominator, TE 12%+, RB 20%+ of team scrimmage yards). Exact when the birth date is known; ~ = estimated from high-school recruiting class (or class year). Lower is better' },
   yptpa: { label: 'YPTPA', fmt: d2, desc: 'Receiving yards per team pass attempt — production adjusted for offense volume' },
   csh: { label: 'Carry share', fmt: pct, desc: 'Share of team rush attempts' },
   scsh: { label: 'Scrim share', fmt: pct, desc: 'Share of team scrimmage yards (rushing + receiving)' },
@@ -62,23 +64,26 @@ export const CM = {
   rzt: { label: 'RZ tgt', fmt: int, desc: 'Red-zone targets' },
   rzr: { label: 'RZ car', fmt: int, desc: 'Red-zone carries' },
   rztd: { label: 'RZ TD', fmt: int, desc: 'Red-zone touchdowns' },
+  qcar: { label: 'Rush att', fmt: int, desc: 'Rushing attempts, excluding sacks and kneel-downs (college box scores count sacks as runs)' },
+  qruyd: { label: 'Rush yds', fmt: int, desc: 'Rushing yards, excluding sacks and kneel-downs' },
+  qypc: { label: 'Rush YPC', fmt: d2, desc: 'Yards per rush, excluding sacks and kneel-downs' },
 };
 for (const m of Object.values(CM)) m.src = SRC;
 
 export const C_COLUMNS = {
-  WR: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
-  TE: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
-  RB: ['g', 'car', 'ruyd', 'rutd', 'ypc', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epar', 'rusr', 'csh', 'scsh', 'tsh', 'rec', 'reyd', 'yprr', 'scpg', 'rztd'],
-  QB: ['g', 'pa', 'pyd', 'ptd', 'int', 'ypa', 'epap', 'cpoe', 'psr', 'skr', 'padot', 'ruyd', 'rypg'],
+  WR: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'bkAge', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
+  TE: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'bkAge', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
+  RB: ['g', 'car', 'ruyd', 'rutd', 'ypc', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epar', 'rusr', 'csh', 'scsh', 'rdom', 'bkAge', 'tsh', 'rec', 'reyd', 'yprr', 'scpg', 'rztd'],
+  QB: ['g', 'pa', 'pyd', 'ptd', 'int', 'ypa', 'epap', 'cpoe', 'psr', 'skr', 'padot', 'qcar', 'qruyd', 'qypc', 'rutd', 'rypg'],
 };
 export const C_SCATTER = { WR: ['tprr', 'yprr'], TE: ['tprr', 'yprr'], RB: ['stuff', 'exp10'], QB: ['cpoe', 'epap'] };
 export const C_PROFILE = {
   WR: ['tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt'],
   TE: ['tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt'],
-  RB: ['csh', 'scsh', 'tch', 'tsh', 'ypc', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epar', 'rusr', 'scpg', 'yprr'],
-  QB: ['epap', 'cpoe', 'ypa', 'psr', 'skr', 'padot', 'rypg'],
+  RB: ['csh', 'scsh', 'rdom', 'tch', 'tsh', 'ypc', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epar', 'rusr', 'scpg', 'yprr'],
+  QB: ['epap', 'cpoe', 'ypa', 'psr', 'skr', 'padot', 'qypc', 'rypg'],
 };
-export const COUNT_STATS = new Set(['g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'ruyd', 'rutd', 'pa', 'pyd', 'ptd', 'int', 'rzt', 'rzr', 'rztd']);
+export const COUNT_STATS = new Set(['g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'ruyd', 'rutd', 'pa', 'pyd', 'ptd', 'int', 'rzt', 'rzr', 'rztd', 'qcar', 'qruyd']);
 
 const cache = { prospects: null, seasons: {} };
 export async function loadProspects() {
@@ -98,6 +103,18 @@ export async function loadCollegeSeason(season) {
   }
   return cache.seasons[season];
 }
+/** Full college career (every season since 2019) for any player, from the split career files. */
+export async function loadCareer(cid) {
+  cid = String(cid);
+  const b = cid.slice(-2).padStart(2, '0');
+  if (!cache.careers?.[b]) {
+    (cache.careers ||= {})[b] = await fetch(`data/college/c_${b}.json`).then(r => (r.ok ? r.json() : {})).catch(() => ({}));
+  }
+  const c = cache.careers[b][cid];
+  return c ? { s: [...c.s].sort((x, y) => x.season - y.season), bk: c.bk, rc: c.rc, best: c.best } : { s: [], bk: null, rc: null, best: null };
+}
+/** Format a stat from a season row; estimated breakout ages get a ~ prefix. */
+export const fmtRow = (k, row) => (k === 'bkAge' && row?.bkEst && row.bkAge != null ? `~${CM.bkAge.fmt(row.bkAge)}` : fmtC(k, row?.[k]));
 export const collegeHeadshot = cid => `https://a.espncdn.com/i/headshots/college-football/players/full/${cid}.png`;
 export const stars = n => (n ? '★'.repeat(n) : '');
 export const fmtC = (k, v) => (CM[k] ? CM[k].fmt(v) : v ?? '—');

@@ -21,6 +21,8 @@ fs.mkdirSync(path.join(SITE, 'data', 'values'), { recursive: true });
 for (const f of fs.readdirSync(OUT)) {
   if (f.endsWith('.json') && f !== 'idmap.json') fs.copyFileSync(path.join(OUT, f), path.join(SITE, 'data', f));
 }
+// full college careers (split files)
+if (fs.existsSync(path.join(OUT, 'college'))) fs.cpSync(path.join(OUT, 'college'), path.join(SITE, 'data', 'college'), { recursive: true });
 
 // Pre-built market values for every format the app offers.
 let n = 0;

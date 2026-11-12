@@ -49,7 +49,7 @@ async function loadSeason(season, current) {
   const get = id => { let o = P.get(id); if (!o) { o = { games: new Set(), teams: {}, tgt: 0, rec: 0, reyd: 0, retd: 0, car: 0, ruyd: 0, rutd: 0, pc: 0, pa: 0, pyd: 0, ptd: 0, int: 0,
     opp: 0, exp: 0, succ: 0, epa: 0, rzt: 0, rzr: 0, rztd: 0, teamTgt: 0, teamTch: 0, tch: 0, uRushes: 0, uTargets: 0 }; P.set(id, o); } return o; };
   const T = new Map(); // team id -> season totals
-  const team = id => { let t = T.get(id); if (!t) { t = { games: new Set(), passAtt: 0, recYds: 0, recTd: 0, rushAtt: 0, rushYds: 0, recRec: 0 }; T.set(id, t); } return t; };
+  const team = id => { let t = T.get(id); if (!t) { t = { games: new Set(), passAtt: 0, recYds: 0, recTd: 0, rushAtt: 0, rushYds: 0, rushTd: 0, recRec: 0 }; T.set(id, t); } return t; };
   const nameToId = new Map(); // `${nameKey}|${teamId}` -> athlete id
 
   for (const r of box) {
@@ -64,7 +64,7 @@ async function loadSeason(season, current) {
       t.passAtt += a; o.pc += c; o.pa += a; o.pyd += num(r.passingYards); o.ptd += num(r.passingTouchdowns); o.int += num(r.interceptions);
     } else if (r.category === 'rushing') {
       const a = num(r.rushingAttempts), y = num(r.rushingYards);
-      t.rushAtt += a; t.rushYds += y; o.car += a; o.ruyd += y; o.rutd += num(r.rushingTouchdowns);
+      t.rushAtt += a; t.rushYds += y; t.rushTd += num(r.rushingTouchdowns); o.car += a; o.ruyd += y; o.rutd += num(r.rushingTouchdowns);
     } else {
       const c = num(r.receptions), y = num(r.receivingYards), td = num(r.receivingTouchdowns);
       t.recRec += c; t.recYds += y; t.recTd += td; o.rec += c; o.reyd += y; o.retd += td;
@@ -156,12 +156,16 @@ async function loadSeason(season, current) {
       tsh: rd(div(o.uTargets, o.teamTgt)), ysh: rd(ysh), tdsh: rd(tdsh),
       dom: rd(ysh != null ? (ysh + (tdsh ?? 0)) / 2 : null), yptpa: rd(div(o.reyd, t.passAtt), 2),
       csh: rd(div(o.car, t.rushAtt)), scsh: rd(div(o.ruyd + o.reyd, t.rushYds + t.recYds)), tch: rd(div(o.tch, o.teamTch)),
+      rdom: rd(t.rushYds + t.recYds > 0 ? ((o.ruyd + o.reyd) / (t.rushYds + t.recYds) + (div(o.rutd + o.retd, (t.rushTd || 0) + t.recTd) ?? 0)) / 2 : null),
       // efficiency
       ypc: rd(div(o.ruyd, o.car), 2), ypr: rd(div(o.reyd, o.rec), 1), ypt: rd(div(o.reyd, tgt), 2), catch: rd(div(o.rec, tgt)),
       epat: rd(div(o.aRecEpa, o.aTgt), 2), rsr: rd(div(o.aRecSr, o.aTgt)), adot: rd(div(o.air, o.airTgt), 1), yacr: rd(div(o.yac, o.yacRec), 1),
       epar: rd(div(o.aRushEpa, o.aCar), 2), rusr: rd(div(o.aRushSr, o.aCar)),
       exp: rd(div(o.exp, o.opp)), sr: rd(div(o.succ, o.opp)), epao: rd(div(o.epa, o.opp), 2),
-      scpg: rd(div(o.ruyd + o.reyd, g), 1), rypg: rd(div(o.ruyd, g), 1),
+      scpg: rd(div(o.ruyd + o.reyd, g), 1),
+      // QB rushing without sacks (college box scores count sacks as runs) or kneel-downs, from play-by-play
+      qcar: o.pCar ?? null, qruyd: o.pCar ? o.pRuYd : null, qypc: rd(div(o.pRuYd, o.pCar), 2),
+      rypg: rd(div(o.pCar ? o.pRuYd : o.ruyd, g), 1),
       ypa: rd(div(o.pyd, o.pa), 2), epap: rd(div(o.aPassEpa, (o.aAtt || 0) + (o.aSk || 0)), 2),
       cpoe: rd(o.aAtt ? ((o.aComp - o.aXComp) / o.aAtt) * 100 - leagueCpoe : null, 1), psr: rd(div(o.aPassSr, (o.aAtt || 0) + (o.aSk || 0))),
       skr: rd(div(o.aSk, (o.aAtt || 0) + (o.aSk || 0))), padot: rd(div(o.pAir, o.pAirAtt), 1),
@@ -187,7 +191,7 @@ export const COLLEGE_PCT = {
   WR: ['tsh', 'ysh', 'dom', 'yptpa', 'yprr', 'tprr', 'ypt', 'ypr', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'rec20r', 'deep', 'fdt', 'scpg', 'rztd'],
   TE: ['tsh', 'ysh', 'dom', 'yptpa', 'yprr', 'tprr', 'ypt', 'ypr', 'catch', 'epat', 'rsr', 'adot', 'yacr', 'exp', 'rec20r', 'deep', 'fdt', 'scpg', 'rztd'],
   RB: ['csh', 'scsh', 'tch', 'tsh', 'ypc', 'epar', 'rusr', 'exp', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epao', 'scpg', 'ypt', 'yprr', 'rztd'],
-  QB: ['epap', 'cpoe', 'ypa', 'psr', 'skr', 'padot', 'rypg', 'epao'],
+  QB: ['epap', 'cpoe', 'ypa', 'psr', 'skr', 'padot', 'rypg', 'qypc', 'epao'],
 };
 const LOWER = new Set(['skr', 'stuff']);
 
@@ -332,6 +336,44 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     };
   };
 
+  // ---- career-level info for every college player
+  const dobByCid = new Map();
+  for (const np of nflBy.values()) if (np.espn_id && np.birth_date) dobByCid.set(String(np.espn_id), np.birth_date);
+  const YEAR_MS = 365.25 * 864e5;
+  const careerInfo = new Map();
+  for (const [cid, list] of career) {
+    const last = list[list.length - 1];
+    const pos = last.pos;
+    const rc = findRecruit(last.name, pos, list[0].season);
+    const dob = dobByCid.get(cid) || null;
+    let bk = null;
+    const rule = BREAKOUT[pos];
+    if (rule) {
+      const first = list.find(x => x.q && (x[rule[0]] ?? 0) >= rule[1]);
+      if (first) {
+        // exact from birth date when known; otherwise ~18.4 in the fall of the recruiting class year, else from class year
+        let age = null, est = false;
+        if (dob) age = (new Date(`${first.season}-09-01`) - new Date(dob)) / YEAR_MS;
+        else if (rc?.year) { age = 18.4 + (first.season - rc.year); est = true; }
+        else if (CLASS_NUM[first.cls]) { age = 18.4 + (CLASS_NUM[first.cls] - 1); est = true; }
+        bk = { season: first.season, cls: first.cls, age: rd(age, 1), est };
+      } else if (list.some(x => x.q)) bk = { none: true };
+    }
+    const domKey = pos === 'RB' ? 'rdom' : 'dom';
+    const best = pos === 'QB' ? null : Math.max(...list.filter(x => x.q).map(x => x[domKey] ?? -1), -1);
+    careerInfo.set(cid, { bk, rc, best: best != null && best >= 0 ? best : null });
+    // stamp the breakout onto every season from the breakout year on (for tables)
+    if (bk && !bk.none) for (const x of list) if (x.season >= bk.season) { x.bkAge = bk.age; if (bk.est) x.bkEst = true; }
+  }
+  // breakout-age percentiles per season (younger = better), among qualified players at the position
+  for (const { players } of Object.values(bySeason)) {
+    for (const pos of ['WR', 'TE', 'RB']) {
+      const rows = [...players.values()].filter(x => x.pos === pos && x.q && x.bkAge != null);
+      const f = midRankFn(rows.map(x => x.bkAge));
+      for (const x of rows) (x.pct ||= {}).bkAge = Math.round(100 - f(x.bkAge));
+    }
+  }
+
   // college lookup by name (+ school) for combine invitees who aren't drafted yet
   const latest = new Map();
   for (const [cid, list] of career) { const s = list[list.length - 1]; const k = nameKey(s.name); if (!latest.has(k)) latest.set(k, []); latest.get(k).push(s); }
@@ -384,10 +426,11 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     p.school ||= last?.team || null;
     p.cls = last?.cls || null;
     p.ht = p.combine?.ht ?? last?.ht ?? null; p.wt = p.combine?.wt ?? last?.wt ?? null;
-    p.recruit = list.length ? findRecruit(p.name, p.pos, list[0].season) : null;
+    const info = p.cid ? careerInfo.get(p.cid) : null;
+    p.recruit = info?.rc ?? (list.length ? findRecruit(p.name, p.pos, list[0].season) : null);
     const best = list.length ? bestSeason(p.pos, list) : null;
     p.best = best ? Object.fromEntries(['season', 'cls', 'team', 'tier', 'g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'ruyd', 'rutd', 'pa', 'pyd', 'ptd', 'int', ...PROD[p.pos].map(x => x[0])].map(k => [k, best[k]])) : null;
-    p.brk = breakout(p.pos, list, p.dob);
+    p.brk = info?.bk ?? breakout(p.pos, list, p.dob);
     if (p.dob) p.age = rd((new Date(`${p.draftClass}-04-25`) - new Date(p.dob)) / (365.25 * 864e5), 1);
   }
   for (const pos of Object.keys(PROD)) {
@@ -428,7 +471,21 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
   const careers = {};
   const slim = s => Object.fromEntries(Object.entries(s).filter(([k, v]) => v != null && !['hs', 'dob', 'recruitId', 'tid'].includes(k)));
   for (const cid of keep) careers[cid] = (career.get(cid) || []).map(slim);
-  const latestSeasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a).slice(0, 2);
+  // Full college careers for every skill player (every season with any offensive snap of production),
+  // split into 100 small files by the last two digits of the ESPN id so a page loads only what it needs.
+  const careerDir = path.join(out, 'college');
+  fs.rmSync(careerDir, { recursive: true, force: true });
+  fs.mkdirSync(careerDir, { recursive: true });
+  const buckets = {};
+  for (const [cid, list] of career) {
+    const rows = list.filter(s => (s.pa || 0) + (s.car || 0) + (s.tgt || 0) + (s.rec || 0) > 0).map(slim);
+    const info = careerInfo.get(cid) || {};
+    if (rows.length) (buckets[cid.slice(-2).padStart(2, '0')] ||= {})[cid] = { s: rows, bk: info.bk || null, rc: info.rc || null, best: info.best ?? null };
+  }
+  for (const [b, obj] of Object.entries(buckets)) fs.writeFileSync(path.join(careerDir, `c_${b}.json`), JSON.stringify(obj));
+  log(`  college careers: ${career.size} players in ${Object.keys(buckets).length} files`);
+
+  const latestSeasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a);
   for (const y of latestSeasons) {
     const { players, teamGames } = bySeason[y];
     const rows = [...players.values()].filter(s => VOL[s.pos](s) >= SHOW[s.pos] * teamGames).map(s => Object.fromEntries(Object.entries(s).filter(([k, v]) => v != null && !['dob', 'recruitId', 'tid'].includes(k))));

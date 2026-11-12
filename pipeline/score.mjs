@@ -24,7 +24,7 @@ export const DISPLAY = {
   WR: ['yprr', 'tprr', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade', 'x_winRate'],
   TE: ['yprr', 'tprr', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade'],
   RB: ['ppg', 'osh', 'csh', 'tsh', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
-  QB: ['ppg', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
+  QB: ['ppg', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
 };
 const LOWER_BETTER = new Set(['drop', 'stuff', 'skr', 'twp', 'press', 'bad']);
 

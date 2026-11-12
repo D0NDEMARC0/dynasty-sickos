@@ -4,7 +4,7 @@ import { M, PROFILE, metricValue } from '../metrics.js';
 import { esc, fmtInt, fmt1, fmtPct, headshot, injTag, signalTag, tipRows, table } from '../ui.js';
 import { columns, pctBars } from '../charts.js';
 import { mount, isRookie } from './common.js';
-import { loadProspects, prospectByCid, CM, fmtC } from '../college.js';
+import { loadProspects, loadCareer, prospectByCid, CM, fmtRow } from '../college.js';
 
 export async function render(root, params, query) {
   rows();
@@ -86,23 +86,27 @@ export async function render(root, params, query) {
 /** College career summary for players we have college data for (recent draft classes). */
 async function collegeCard(box, p) {
   if (!box || !p.espn) return;
-  let data;
-  try { data = await loadProspects(); } catch { return; }
-  const career = data.careers[p.espn] || [];
+  let data, info;
+  try { [data, info] = await Promise.all([loadProspects(), loadCareer(p.espn)]); } catch { return; }
+  const career = info.s.length ? info.s : [...(data.careers[p.espn] || [])].sort((a, b) => a.season - b.season);
   const pr = prospectByCid(p.espn);
   if (!career.length && !pr) return;
-  const keys = { WR: ['rec', 'reyd', 'retd', 'tsh', 'dom', 'yptpa', 'epat'], TE: ['rec', 'reyd', 'retd', 'tsh', 'dom', 'yptpa', 'epat'],
-    RB: ['car', 'ruyd', 'rutd', 'ypc', 'reyd', 'scsh', 'epar'], QB: ['pa', 'pyd', 'ptd', 'int', 'ypa', 'epap', 'cpoe'] }[p.pos] || [];
+  const keys = { WR: ['rec', 'reyd', 'retd', 'tsh', 'dom', 'yprr', 'epat'], TE: ['rec', 'reyd', 'retd', 'tsh', 'dom', 'yprr', 'epat'],
+    RB: ['car', 'ruyd', 'rutd', 'ypc', 'exp10', 'reyd', 'rdom'], QB: ['pa', 'pyd', 'ptd', 'int', 'ypa', 'epap', 'qcar', 'qypc'] }[p.pos] || [];
   const cols = [
-    { key: 's', label: 'Season', cell: s => `<td>${s.season}</td>` },
-    { key: 't', label: 'School', cell: s => `<td>${esc(s.team || '—')}</td>` },
-    { key: 'c', label: 'Class', cell: s => `<td>${esc(s.cls || '—')}</td>` },
-    ...keys.map(k => ({ key: k, label: CM[k].label, n: true, title: CM[k].desc, cell: s => `<td class="n">${fmtC(k, s[k])}</td>` })),
+    { key: 's', label: 'Season', cell: x => `<td>${x.season}</td>` },
+    { key: 't', label: 'School', cell: x => `<td>${esc(x.team || '—')}</td>` },
+    { key: 'c', label: 'Class', cell: x => `<td>${esc(x.cls || '—')}</td>` },
+    ...keys.map(k => ({ key: k, label: CM[k].label, n: true, title: CM[k].desc, cell: x => `<td class="n">${fmtRow(k, x)}</td>` })),
   ];
-  const facts = pr ? [`Prospect score <b>${pr.score ?? '—'}</b> (${pr.draftClass} class)`,
-    pr.brk?.season ? `broke out in ${pr.brk.season} as a ${esc(pr.brk.cls || '')}${pr.brk.age ? ` at ${pr.brk.age}` : ''}` : null,
-    pr.recruit ? `${'★'.repeat(pr.recruit.stars || 0)} recruit` : null,
-    pr.combine?.forty ? `${pr.combine.forty}s 40` : null].filter(Boolean).join(' · ') : '';
+  const bk = pr?.brk ?? info.bk, rc = pr?.recruit ?? info.rc;
+  const facts = [
+    pr ? `Prospect score <b>${pr.score ?? '—'}</b> (${pr.draftClass} class)` : null,
+    p.pos !== 'QB' && bk?.age != null ? `breakout age <b>${bk.est ? '~' : ''}${bk.age.toFixed(1)}</b> (${bk.season})` : p.pos !== 'QB' && bk?.none ? 'no college breakout season' : null,
+    p.pos !== 'QB' && info.best != null ? `best dominator <b>${(info.best * 100).toFixed(1)}%</b>` : null,
+    rc ? `${'★'.repeat(rc.stars || 0)} recruit` : null,
+    pr?.combine?.forty ? `${pr.combine.forty}s 40` : null,
+  ].filter(Boolean).join(' · ');
   box.innerHTML = `<div class="card"><div class="chart-head"><h2 style="margin:0">College career</h2><a class="btn" href="#/college/player/${p.espn}">Full college profile →</a></div>
     ${facts ? `<p class="small" style="margin:0 0 10px">${facts}</p>` : ''}
     ${career.length ? `<div class="tablewrap" style="box-shadow:none">${table({ cols, rows: career })}</div>` : ''}</div>`;
@@ -136,7 +140,8 @@ function history(p, years) {
   ];
   const b = y => p.seasons[y].box;
   const extra = {
-    QB: [['Cmp/Att', y => `${b(y).cmp}/${b(y).att}`], ['Pass yds', y => fmtInt(b(y).pyd)], ['TD', y => b(y).ptd], ['INT', y => b(y).int], ['Rush yds', y => fmtInt(b(y).ruyd)], ['Rush TD', y => b(y).rutd]],
+    QB: [['Cmp/Att', y => `${b(y).cmp}/${b(y).att}`], ['Pass yds', y => fmtInt(b(y).pyd)], ['TD', y => b(y).ptd], ['INT', y => b(y).int],
+      ['Rush att', y => b(y).car], ['Rush yds', y => fmtInt(b(y).ruyd)], ['YPC', y => (b(y).car ? (b(y).ruyd / b(y).car).toFixed(2) : '—')], ['Rush TD', y => b(y).rutd]],
     RB: [['Car', y => b(y).car], ['Rush yds', y => fmtInt(b(y).ruyd)], ['TD', y => b(y).rutd], ['Rec', y => b(y).rec], ['Rec yds', y => fmtInt(b(y).reyd)], ['Rec TD', y => b(y).retd]],
     WR: [['Tgt', y => b(y).tgt], ['Rec', y => b(y).rec], ['Yds', y => fmtInt(b(y).reyd)], ['TD', y => b(y).retd]],
     TE: [['Tgt', y => b(y).tgt], ['Rec', y => b(y).rec], ['Yds', y => fmtInt(b(y).reyd)], ['TD', y => b(y).retd]],

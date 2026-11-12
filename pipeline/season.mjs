@@ -269,6 +269,8 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       skr: r(div(o.sacks, o.db)), deepr: r(div(o.deepAtt, o.att)), press: o.pressN >= 20 ? r(div(o.pressured, o.pressN)) : null,
       twp: r(div(o.intWorthy, o.ftnDb)), par: r(div(o.pa, o.ftnDb)), oop: r(div(o.oop, o.ftnDb)),
       scr: o.scrambles, ruypg: r(div(sum(w => w.rushing_yards), gp), 1),
+      // official rushing (box score): attempts include scrambles and kneel-downs
+      ratt: sum(w => w.carries), rypc: r(div(sum(w => w.rushing_yards), sum(w => w.carries)), 2),
     };
     out.set(id, s);
     logs.set(id, wk.map(w => {

@@ -1,5 +1,5 @@
 // College football advanced-stats explorer (EPA, success rate, target/dominator shares, YPTPA, explosive rate…).
-import { loadProspects, loadCollegeSeason, CM, C_COLUMNS, C_SCATTER, fmtC, collegeHeadshot } from '../college.js';
+import { loadProspects, loadCollegeSeason, CM, C_COLUMNS, C_SCATTER, fmtC, fmtRow, collegeHeadshot } from '../college.js';
 import { esc, heat, table, sortRows, tipRows, posTag } from '../ui.js';
 import { scatter } from '../charts.js';
 import { mount } from './common.js';
@@ -13,7 +13,7 @@ export async function render(root, params, query) {
   let meta;
   try { meta = (await loadProspects()).meta; } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   const seasons = [...meta.leaderboardSeasons].sort((a, b) => b - a);
-  if (query.pos) st.pos = query.pos.toUpperCase();
+  if (query.pos && query.pos.toUpperCase() !== st.pos) { st.pos = query.pos.toUpperCase(); st.sort = null; st.dir = 'desc'; }
   if (query.season) st.season = Number(query.season);
   if (!seasons.includes(st.season)) st.season = seasons[0];
   const data = await loadCollegeSeason(st.season);
@@ -75,7 +75,7 @@ export async function render(root, params, query) {
       { key: 'name', label: 'Player', sort: s => s.name, cell: s => `<td><a class="pcell" href="#/college/player/${s.cid}"><img class="hs" loading="lazy" width="26" height="26" style="width:26px;height:26px" src="${esc(s.hs || collegeHeadshot(s.cid))}" alt="" onerror="this.style.visibility='hidden'"><div><div class="nm">${esc(s.name)}</div><div class="meta">${posTag(s.pos)}<span>${esc(s.team || '')}</span><span>${esc(s.cls || '')}</span></div></div></a></td>` },
       ...keys.map(k => ({
         key: k, label: CM[k].label, n: true, title: CM[k].desc, sort: s => s[k],
-        cell: s => { const p = s.pct?.[k]; return `<td class="n${p != null ? ' heat' : ''}" style="${p != null ? heat(p) : ''}">${fmtC(k, s[k])}</td>`; },
+        cell: s => { const p = s.pct?.[k]; return `<td class="n${p != null ? ' heat' : ''}" style="${p != null ? heat(p) : ''}">${fmtRow(k, s)}</td>`; },
       })),
     ];
     list = sortRows(list, cols, st.sort, st.dir);
