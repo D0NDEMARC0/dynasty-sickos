@@ -6,6 +6,7 @@ import path from 'node:path';
 import { cached, cachedJSON, nflverse, readCSV } from './fetch.mjs';
 import { readParquet } from './load.mjs';
 import { nameKey } from './imports.mjs';
+import { fitDraftModel } from './draftmodel.mjs';
 
 const SDV = 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download';
 const SKILL = new Set(['QB', 'RB', 'WR', 'TE']);
@@ -180,7 +181,8 @@ async function loadSeason(season, current) {
     };
     out.set(id, s);
   }
-  return { players: out, teamGames };
+  // everyone on a roster this season (incl. redshirts with no stats) — the first roster year ≈ the year out of high school
+  return { players: out, teamGames, rosterIds: roster.map(r => String(r.athlete_id)) };
 }
 
 // volume needed to show up / to qualify for percentiles, per team game
@@ -233,13 +235,43 @@ const PROD = {
 const BREAKOUT = { WR: ['dom', 0.2], TE: ['dom', 0.12], RB: ['scsh', 0.2] };
 // Production is discounted for weaker competition (Power 4 full credit).
 export const TIER_FACTOR = { P4: 1, P5: 1, G6: 0.82, G5: 0.82, FCS: 0.6 }; // P5/G5 = pre-2024 labels
-// Before the draft there's no draft capital, so lean on what predicts it: production vs. competition, pedigree, age.
+// Before the draft there's no draft capital, so a model trained on recent drafts projects it (pdc) from
+// recruiting, production vs. competition, breakout, age, conference and size; real draft capital replaces it after.
 const CLASS_AGE = { FR: 95, SO: 90, JR: 75, SR: 40 };
 export const PROSPECT_WEIGHTS = {
-  pre: { prod: 0.4, rec: 0.25, brk: 0.15, ath: 0.1, age: 0.1 },
-  preQB: { prod: 0.35, rec: 0.35, ath: 0.15, age: 0.15 },
+  pre: { pdc: 0.45, prod: 0.3, brk: 0.1, ath: 0.1, age: 0.05 },
+  preQB: { pdc: 0.5, prod: 0.3, ath: 0.1, age: 0.1 },
   drafted: { dc: 0.4, prod: 0.35, brk: 0.1, ath: 0.1, age: 0.05 },
 };
+// NFL rule: a player can enter the draft once three seasons have passed since his high-school class graduated.
+const YEARS_OUT_OF_HS = 3;
+// typical age on draft day (late April) for a player N years out of high school: ~18.05 + N
+const draftAgeFromHs = (draftYear, hs) => 18.05 + (draftYear - hs);
+
+// season production index (0–100): weighted percentile over the position's production metrics, competition-adjusted
+function seasonProd(s) {
+  if (!s?.q || !s.pct || !PROD[s.pos]) return null;
+  let n = 0, d = 0;
+  for (const [m, w] of PROD[s.pos]) { const v = s.pct[m]; if (v != null) { n += v * w; d += w; } }
+  return d >= 0.4 ? (n / d) * (TIER_FACTOR[s.tier] ?? 0.85) : null;
+}
+const recruitScore = rc => (!rc ? 0 : rc.grade ? Math.max(0, Math.min(100, ((rc.grade - 78) / 22) * 100)) : ({ 5: 95, 4: 65, 3: 30, 2: 5 }[rc.stars] ?? 0));
+export const DRAFT_FEATURES = ['best-season production', 'best-season production (squared)', 'final-season production', 'recruiting grade',
+  'no recruiting profile', 'breakout', 'age on draft day', 'Power 4 school', 'FCS school', 'qualified seasons', 'height', 'weight'];
+function draftFeatures(list, info, hs, draftYear) {
+  const last = list[list.length - 1];
+  const prods = list.map(seasonProd).filter(v => v != null);
+  const best = prods.length ? Math.max(...prods) : 0;
+  return [
+    best, (best * best) / 100, seasonProd(last) ?? 0,
+    recruitScore(info?.rc), info?.rc ? 0 : 1,
+    last.pos === 'QB' ? 0 : breakoutScore(info?.bk) ?? 0,
+    draftAgeFromHs(draftYear, hs),
+    last.tier === 'P4' || last.tier === 'P5' ? 1 : 0, last.tier === 'FCS' ? 1 : 0,
+    list.filter(s => s.q).length,
+    last.ht ?? NaN, last.wt ?? NaN,
+  ];
+}
 
 function bestSeason(pos, seasons) {
   const qual = seasons.filter(s => s.q);
@@ -374,6 +406,57 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     }
   }
 
+  // ---- NFL draft eligibility (three seasons out of high school). The first college roster year is the
+  // high-school class for almost everyone; the recruiting class catches gap years / prep school / missions, and
+  // ESPN's class year (which never runs ahead of years since high school) catches JUCO transfers.
+  const firstRoster = new Map(), lastRoster = new Map();
+  for (const y of Object.keys(bySeason).map(Number).sort((a, b) => a - b)) {
+    for (const id of bySeason[y].rosterIds || []) { if (!firstRoster.has(id)) firstRoster.set(id, y); lastRoster.set(id, y); }
+  }
+  const dataStart = Math.min(...Object.keys(bySeason).map(Number));
+  const eligByCid = new Map();
+  for (const [cid, list] of career) {
+    const first = Math.min(firstRoster.get(cid) ?? Infinity, list[0].season);
+    const info = careerInfo.get(cid);
+    let hs = first;
+    if (info.rc?.year && info.rc.year < hs && info.rc.year >= hs - 2) hs = info.rc.year;
+    const last = list[list.length - 1], n = CLASS_NUM[last.cls];
+    if (n && last.season - n + 1 < hs) hs = last.season - n + 1;
+    const el = { year: hs + YEARS_OUT_OF_HS, hs, ...(first <= dataStart ? { early: true } : {}) };
+    eligByCid.set(cid, el);
+    info.el = el;
+    for (const s of list) s.elig = el.year;
+  }
+
+  // ---- projected draft capital: train on everyone who left college after the 2nd data season onward
+  const draftedByCid = new Map(), draftedByName = new Map();
+  for (const r of picks) {
+    const np = nflBy.get(r.gsis_id);
+    if (np?.espn_id && !draftedByCid.has(String(np.espn_id))) draftedByCid.set(String(np.espn_id), r);
+    draftedByName.set(`${nameKey(r.pfr_player_name)}|${posOf(r.position)}|${r.season}`, r);
+  }
+  const trainRows = [];
+  for (const [cid, list] of career) {
+    const last = list[list.length - 1], Y = last.season + 1, el = eligByCid.get(cid);
+    if (Y < dataStart + 2 || Y > current || !list.some(s => s.q) || el.year > Y) continue;
+    if ((lastRoster.get(cid) ?? last.season) > last.season) continue; // still on a roster (redshirt / injury year): hasn't left
+    const d = draftedByCid.get(cid) || draftedByName.get(`${nameKey(last.name)}|${last.pos}|${Y}`);
+    trainRows.push({ pos: last.pos, year: Y, x: draftFeatures(list, careerInfo.get(cid), el.hs, Y), y: d ? draftCapital(d.pick) : 0 });
+  }
+  const dm = fitDraftModel(trainRows);
+  log(`  draft-capital model: ${trainRows.length} players who left college (${trainRows.filter(r => r.y > 0).length} drafted), back-test ${Object.entries(dm.test).map(([p, t]) => `${p} ρ ${t.rho}, hit ${t.hit}`).join(' · ')}`);
+  // where the k-th QB / RB / WR / TE taken has gone in the last 8 NFL drafts. The model ranks players within a
+  // position; this curve turns that rank into a pick, so each class gets a realistic number of players per position.
+  const byDraft = {};
+  for (const r of picks) if (r.season > current - 8 && r.season <= current) ((byDraft[r.season] ||= {})[posOf(r.position)] ||= []).push(r.pick);
+  const posSlots = {};
+  for (const pos of SKILL) {
+    const lists = Object.values(byDraft).map(d => (d[pos] || []).sort((a, b) => a - b));
+    const lens = lists.map(a => a.length).sort((a, b) => a - b);
+    const K = lens[Math.floor(lens.length / 2)] || 0; // typical number drafted at the position
+    posSlots[pos] = Array.from({ length: K }, (_, k) => { const v = lists.filter(a => a[k] != null).map(a => a[k]); return v.reduce((s, x) => s + x, 0) / v.length; });
+  }
+
   // college lookup by name (+ school) for combine invitees who aren't drafted yet
   const latest = new Map();
   for (const [cid, list] of career) { const s = list[list.length - 1]; const k = nameKey(s.name); if (!latest.has(k)) latest.set(k, []); latest.get(k).push(s); }
@@ -406,11 +489,12 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
       if (inv.length) {
         for (const r of inv) add(y, { status: 'combine', cid: findCollege(r.player_name, r.school, posOf(r.pos)), name: r.player_name, pos: posOf(r.pos), school: r.school, combine: combineCard(r, posOf(r.pos)) });
       } else {
-        // before the combine: draft-eligible watch list = juniors/seniors with real production this season
+        // before the combine: big board = every FBS player who's draft-eligible next spring (3+ years out of
+        // high school, incl. redshirt sophomores and players who already passed on a draft) with real production
         const cur = bySeason[current] || bySeason[current - 1];
         for (const s of cur ? cur.players.values() : []) {
           const prev = bySeason[current - 1]?.players.get(s.cid);
-          if (!['JR', 'SR'].includes(s.cls) || s.div !== 'fbs' || !(s.q || prev?.q)) continue;
+          if (!(eligByCid.get(s.cid)?.year <= y) || s.div !== 'fbs' || !(s.q || prev?.q)) continue;
           add(y, { status: 'watch', cid: s.cid, name: s.name, pos: s.pos, school: s.team });
         }
       }
@@ -432,7 +516,24 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     p.best = best ? Object.fromEntries(['season', 'cls', 'team', 'tier', 'g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'ruyd', 'rutd', 'pa', 'pyd', 'ptd', 'int', ...PROD[p.pos].map(x => x[0])].map(k => [k, best[k]])) : null;
     p.brk = info?.bk ?? breakout(p.pos, list, p.dob);
     if (p.dob) p.age = rd((new Date(`${p.draftClass}-04-25`) - new Date(p.dob)) / (365.25 * 864e5), 1);
+    const el = p.cid ? eligByCid.get(p.cid) : null;
+    if (el) { p.elig = el.year; p.hs = el.hs; }
+    if (!p.draft && el) {
+      p.yr = current - el.hs + 1; // college season number this fall (3 = third year out of high school)
+      if (p.age == null) { p.age = rd(draftAgeFromHs(p.draftClass, el.hs), 1); p.ageEst = true; }
+      if (list.length && dm.predict[p.pos]) p.ev = Math.max(0, dm.predict[p.pos](draftFeatures(list, info, el.hs, p.draftClass)));
+    }
   }
+  // projected NFL draft slot "if he declares": the k-th best QB/RB/WR/TE by the model takes the k-th slot at the position
+  const preDraft = prospects.filter(p => !p.draft && p.ev != null);
+  for (const pos of SKILL) {
+    const slots = posSlots[pos] || [];
+    preDraft.filter(p => p.pos === pos).sort((a, b) => b.ev - a.ev).forEach((p, k) => {
+      const pick = k < slots.length ? Math.round(slots[k]) : null;
+      p.proj = { pick, round: pick ? Math.min(7, Math.ceil(pick / 32)) : null, posRank: k + 1, ev: rd(p.ev, 1) };
+    });
+  }
+  preDraft.sort((a, b) => (a.proj.pick ?? 999) - (b.proj.pick ?? 999) || b.ev - a.ev).forEach((p, i) => { p.proj.rank = i + 1; });
   for (const pos of Object.keys(PROD)) {
     const group = prospects.filter(p => p.pos === pos);
     const feat = {};
@@ -449,6 +550,8 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
         age: p.age != null ? Math.round(100 - ageRank(p.age)) : !p.draft ? CLASS_AGE[p.cls] ?? null : null,
         rec: p.recruit?.stars ? Math.round(Math.max(0, Math.min(5, p.recruit.stars) - 2) / 3 * 100) : null,
         dc: p.draft ? draftCapital(p.draft.p) : null,
+        // projected draft capital, scored like real draft capital from the projected pick (0 = projected undrafted)
+        pdc: !p.draft && p.proj ? draftCapital(p.proj.pick) ?? 0 : null,
       };
       const W = p.draft ? PROSPECT_WEIGHTS.drafted : p.pos === 'QB' ? PROSPECT_WEIGHTS.preQB : PROSPECT_WEIGHTS.pre;
       let s = 0, d = 0;
@@ -458,19 +561,18 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     }
   }
 
+  for (const p of prospects) delete p.ev; // kept as p.proj.ev
   await attachMarket(prospects, { current, log });
 
-  // the pre-combine watch list can be long; keep the strongest 300
+  // the pre-combine board can be long: keep the strongest 300, plus everyone the model projects to be drafted and
+  // every 4–5 star recruit, so well-known names never disappear from the board
   const watch = prospects.filter(p => p.status === 'watch').sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  const dropped = new Set(watch.slice(300));
+  const dropped = new Set(watch.slice(300).filter(p => !p.proj?.pick && !(p.recruit?.stars >= 4)));
   for (let i = prospects.length - 1; i >= 0; i--) if (dropped.has(prospects[i])) prospects.splice(i, 1);
-  if (classes[upcoming]?.status === 'watch') classes[upcoming].count = Math.min(classes[upcoming].count, 300);
+  if (classes[upcoming]?.status === 'watch') classes[upcoming].count = prospects.filter(p => p.draftClass === upcoming).length;
 
   // ---- write files
-  const keep = new Set(prospects.map(p => p.cid).filter(Boolean));
-  const careers = {};
   const slim = s => Object.fromEntries(Object.entries(s).filter(([k, v]) => v != null && !['hs', 'dob', 'recruitId', 'tid'].includes(k)));
-  for (const cid of keep) careers[cid] = (career.get(cid) || []).map(slim);
   // Full college careers for every skill player (every season with any offensive snap of production),
   // split into 100 small files by the last two digits of the ESPN id so a page loads only what it needs.
   const careerDir = path.join(out, 'college');
@@ -480,7 +582,7 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
   for (const [cid, list] of career) {
     const rows = list.filter(s => (s.pa || 0) + (s.car || 0) + (s.tgt || 0) + (s.rec || 0) > 0).map(slim);
     const info = careerInfo.get(cid) || {};
-    if (rows.length) (buckets[cid.slice(-2).padStart(2, '0')] ||= {})[cid] = { s: rows, bk: info.bk || null, rc: info.rc || null, best: info.best ?? null };
+    if (rows.length) (buckets[cid.slice(-2).padStart(2, '0')] ||= {})[cid] = { s: rows, bk: info.bk || null, rc: info.rc || null, best: info.best ?? null, el: info.el || null };
   }
   for (const [b, obj] of Object.entries(buckets)) fs.writeFileSync(path.join(careerDir, `c_${b}.json`), JSON.stringify(obj));
   log(`  college careers: ${career.size} players in ${Object.keys(buckets).length} files`);
@@ -494,9 +596,16 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
   const meta = {
     current, upcoming, collegeSeasons: Object.keys(bySeason).map(Number), leaderboardSeasons: latestSeasons,
     classes: Object.fromEntries(Object.entries(classes).sort((a, b) => b[0] - a[0])), weights: PROSPECT_WEIGHTS, production: PROD, breakout: BREAKOUT,
+    eligibility: { yearsOutOfHighSchool: YEARS_OUT_OF_HS },
+    draftModel: {
+      features: DRAFT_FEATURES, test: dm.test, players: trainRows.length, drafted: trainRows.filter(r => r.y > 0).length,
+      slots: Object.fromEntries(Object.entries(posSlots).map(([pos, a]) => [pos, a.map(x => Math.round(x))])),
+      drafts: [...new Set(trainRows.map(r => r.year))].sort((a, b) => a - b),
+    },
     generated: new Date().toISOString(),
   };
-  fs.writeFileSync(path.join(out, 'prospects.json'), JSON.stringify({ meta, prospects, careers }));
+  // careers live in the split college/c_XX.json files (loaded per player), which keeps this file small for phones
+  fs.writeFileSync(path.join(out, 'prospects.json'), JSON.stringify({ meta, prospects }));
   log(`  prospects: ${Object.entries(classes).map(([y, c]) => `${y} ${c.status} (${c.count})`).join(', ')}`);
   return meta;
 }

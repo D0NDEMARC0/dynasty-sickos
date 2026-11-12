@@ -249,3 +249,16 @@ pre.log { background: var(--surface-2); padding: 10px; border-radius: 8px; font-
   input[type=search], input[type=text] { min-width: 0; width: 100%; }
   .pbar { grid-template-columns: 96px minmax(0, 1fr) 56px 30px; }
 }
+
+/* big board: rookie-round tiers + boards you paste */
+tr.tierrow td { background: var(--surface-2); color: var(--ink-2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 7px 8px; }
+tr.tierrow td span { position: sticky; left: 8px; }
+table.data tbody tr.tierrow:hover td { background: var(--surface-2); }
+.boards .bhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.boards .bform { display: grid; gap: 8px; margin-top: 12px; }
+.boards textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; resize: vertical; }
+.boards .blist { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.boards details { margin-top: 2px; }
+.boards details summary { cursor: pointer; color: var(--ink-2); }
+.linkbtn { background: none; border: 0; padding: 0 0 0 6px; color: var(--accent-ink); cursor: pointer; font-size: 12px; }
+.linkbtn:hover { text-decoration: underline; }

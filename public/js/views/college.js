@@ -1,10 +1,10 @@
 // College football advanced-stats explorer (EPA, success rate, target/dominator shares, YPTPA, explosive rate…).
-import { loadProspects, loadCollegeSeason, CM, C_COLUMNS, C_SCATTER, fmtC, fmtRow, collegeHeadshot } from '../college.js';
+import { loadProspects, loadCollegeSeason, CM, C_COLUMNS, C_SCATTER, C_NONSTAT, fmtC, fmtRow, collegeHeadshot } from '../college.js';
 import { esc, heat, table, sortRows, tipRows, posTag } from '../ui.js';
 import { scatter } from '../charts.js';
 import { mount } from './common.js';
 
-const st = { pos: 'WR', season: null, q: '', qual: true, fbs: true, sort: null, dir: 'desc', limit: 100, axes: {} };
+const st = { pos: 'WR', season: null, q: '', qual: true, fbs: true, elig: 'any', sort: null, dir: 'desc', limit: 100, axes: {} };
 const DEFAULT_SORT = { WR: 'reyd', TE: 'reyd', RB: 'ruyd', QB: 'epap' };
 
 export async function render(root, params, query) {
@@ -30,15 +30,20 @@ export async function render(root, params, query) {
       <input type="search" placeholder="Search player or school" value="${esc(st.q)}" data-k="q">
       <label class="chk"><input type="checkbox" data-k="qual" ${st.qual ? 'checked' : ''}> Qualified only</label>
       <label class="chk"><input type="checkbox" data-k="fbs" ${st.fbs ? 'checked' : ''}> FBS only</label>
+      <select data-k="elig" aria-label="NFL draft eligibility">${[
+        ['any', 'Any draft year'], ['next', `Eligible for ${meta.upcoming} draft`], ['plus1', `First eligible ${meta.upcoming + 1}`], ['later', `${meta.upcoming + 2} or later`],
+      ].map(([v, l]) => `<option value="${v}" ${st.elig === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     </div>
     <div class="card" data-chart></div>
     <div class="tablewrap tall" data-table style="margin-top:12px"></div>
     <div class="more" data-more></div>`;
 
-  const pool = () => data.players.filter(s => s.pos === st.pos && (!st.fbs || s.div === 'fbs'));
+  const up = meta.upcoming;
+  const eligOk = s => st.elig === 'any' || (s.elig != null && (st.elig === 'next' ? s.elig <= up : st.elig === 'plus1' ? s.elig === up + 1 : s.elig >= up + 2));
+  const pool = () => data.players.filter(s => s.pos === st.pos && (!st.fbs || s.div === 'fbs') && eligOk(s));
 
   const drawChart = list => {
-    const keys = C_COLUMNS[st.pos].filter(k => !['g'].includes(k) && list.some(s => s[k] != null));
+    const keys = C_COLUMNS[st.pos].filter(k => !C_NONSTAT.has(k) && list.some(s => s[k] != null));
     const [dx, dy] = C_SCATTER[st.pos];
     const ax = st.axes[st.pos] || (st.axes[st.pos] = { x: dx, y: dy });
     if (!keys.includes(ax.x)) ax.x = keys[0];
@@ -102,6 +107,7 @@ export async function render(root, params, query) {
     if (t.dataset.k === 'season') { location.hash = `#/college?season=${t.value}&pos=${st.pos}`; return; }
     if (t.dataset.k === 'qual') { st.qual = t.checked; draw(); }
     if (t.dataset.k === 'fbs') { st.fbs = t.checked; draw(); }
+    if (t.dataset.k === 'elig') { st.elig = t.value; st.limit = 100; draw(); }
     if (t.dataset.axis) { st.axes[st.pos][t.dataset.axis] = t.value; draw(); }
   });
   el.addEventListener('input', e => { if (e.target.dataset.k === 'q') { st.q = e.target.value; st.limit = 100; draw(); } });

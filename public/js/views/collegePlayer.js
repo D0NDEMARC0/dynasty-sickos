@@ -15,7 +15,7 @@ export async function render(root, params) {
   const p = prospectByCid(cid);
   // full career (every season since 2019, including low-volume years) for anyone, prospect or not
   const info = await loadCareer(cid);
-  const career = info.s.length ? info.s : [...(data.careers[cid] || [])].sort((a, b) => a.season - b.season);
+  const career = info.s.length ? info.s : [...(data.careers?.[cid] || [])].sort((a, b) => a.season - b.season);
   if (!career.length && !p) { el.innerHTML = '<div class="empty">No college data for this player. <a class="link" href="#/college">Back to college analytics</a></div>'; return; }
   const last = career[career.length - 1] || {};
   const pos = p?.pos || last.pos;
@@ -26,6 +26,13 @@ export async function render(root, params) {
   const best = career.filter(s => s.q).sort((a, b) => scoreOf(b) - scoreOf(a))[0] || last;
   const bk = p?.brk ?? info.bk, rc = p?.recruit ?? info.rc;
   const schools = [...new Set(career.map(s => s.team).filter(Boolean))];
+  // NFL draft eligibility: three years out of high school
+  const eli = info.el || (p?.elig ? { year: p.elig, hs: p.hs } : null);
+  const { current, upcoming } = data.meta;
+  const elig = !eli ? null : nfl ? { chip: null, dl: 'now in the NFL' }
+    : eli.year > upcoming ? { chip: `Draft-eligible in ${eli.year}`, dl: `can’t enter the ${upcoming} draft` }
+      : eli.year === upcoming ? { chip: `Draft-eligible in ${eli.year} (first year)`, dl: last.season === current ? 'can declare after this season' : '' }
+        : { chip: `Draft-eligible since ${eli.early ? '≤' : ''}${eli.year}${last.season === current ? ' · returned to school' : ''}`, dl: last.season === current ? 'already eligible; went back to school' : '' };
 
   el.innerHTML = `
     <p class="small" style="margin:0 0 10px"><a class="link" href="#/college?pos=${pos}">← College analytics</a>${p ? ` · <a class="link" href="#/prospects?class=${p.draftClass}">${p.draftClass} prospects</a>` : ''}</p>
@@ -38,14 +45,15 @@ export async function render(root, params) {
           <span>${esc(schools.join(' → ') || p?.school || '')}</span>
           ${last.cls ? `<span>${esc(last.cls)} in ${last.season}</span>` : ''}
           ${ht ? `<span>${Math.floor(ht / 12)}'${ht % 12}"${wt ? `, ${wt} lb` : ''}</span>` : ''}
-          ${p?.age != null ? `<span>Age ${fmt1(p.age)} on draft day</span>` : ''}
+          ${elig?.chip ? `<span>${elig.chip}</span>` : ''}
+          ${p?.age != null ? `<span>Age ${p.ageEst ? '~' : ''}${fmt1(p.age)} on draft day</span>` : ''}
           ${rc ? `<span>${stars(rc.stars)} recruit (${rc.year})</span>` : ''}
           ${p?.draft ? `<span>Drafted ${p.draftClass} R${p.draft.r} #${p.draft.p} (${esc(p.draft.team)})</span>` : p ? `<span>${p.draftClass} draft class</span>` : ''}
         </div>
       </div>
       ${nfl ? `<a class="btn" href="#/player/${encodeURIComponent(nfl.id)}">NFL profile →</a>` : ''}
     </div></div>
-    ${profileTiles(pos, bk, rc, info.best, career)}
+    ${profileTiles(pos, bk, rc, info.best, career, eli, elig)}
     ${p ? prospectTiles(p, row) : ''}
     <div class="grid2">
       <div class="card"><h2>Best season vs ${pos}s · ${best.season ?? ''}</h2>${percentiles(pos, best)}</div>
@@ -58,7 +66,7 @@ export async function render(root, params) {
 const scoreOf = s => Object.values(s.pct || {}).reduce((a, b) => a + b, 0);
 const tile = (lbl, val, dl) => `<div class="tile"><div class="lbl">${lbl}</div><div class="val">${val ?? '—'}</div><div class="dl">${dl || ''}</div></div>`;
 
-function profileTiles(pos, bk, rc, bestDom, career) {
+function profileTiles(pos, bk, rc, bestDom, career, el, elig) {
   const sum = k => career.reduce((s, x) => s + (x[k] || 0), 0);
   const totals = pos === 'QB' ? `${fmtInt(sum('pyd'))} pass yds · ${sum('ptd')} TD · ${fmtInt(sum('qruyd'))} rush yds`
     : pos === 'RB' ? `${fmtInt(sum('ruyd'))} rush yds · ${fmtInt(sum('reyd'))} rec yds · ${sum('rutd') + sum('retd')} TD`
@@ -68,17 +76,22 @@ function profileTiles(pos, bk, rc, bestDom, career) {
     ${pos !== 'QB' ? tile('Best dominator', bestDom != null ? fmtPct(bestDom, 1) : '—', pos === 'RB' ? 'share of team scrimmage yds + TDs' : 'share of team receiving yds + TDs') : ''}
     ${tile('Recruiting', rc ? stars(rc.stars) : '—', rc ? `${rc.year} class · grade ${rc.grade}` : 'no match found')}
     ${tile('College career', `${career.length} season${career.length === 1 ? '' : 's'}`, totals)}
+    ${el ? tile('First NFL draft', `${el.early ? '≤' : ''}${el.year}`, [`high-school class of ${el.early ? '≤' : ''}${el.hs} + 3 years`, elig?.dl].filter(Boolean).join(' · ')) : ''}
   </div>`;
 }
 
 function prospectTiles(p, row) {
   const c = p.comps || {};
   return `<div class="tiles">
-    ${tile('Prospect score', p.score, `${p.draftClass} class · ${p.status === 'drafted' ? 'drafted' : p.status === 'combine' ? 'combine invitee' : 'watch list'}`)}
+    ${tile('Prospect score', p.score, `${p.draftClass} class · ${p.status === 'drafted' ? 'drafted' : p.status === 'combine' ? 'combine invitee' : 'big board'}`)}
     ${tile('Production', c.prod, 'percentile vs prospects at the position')}
     ${p.pos !== 'QB' ? tile('Breakout score', c.brk, 'earlier breakout = higher') : ''}
     ${tile('Athleticism', c.ath, p.combine ? 'combine percentile' : 'no combine data yet')}
-    ${p.draft ? tile('Draft capital', c.dc, `pick ${p.draft.p}`) : tile('Recruiting score', c.rec, '')}
+    ${p.draft ? tile('Draft capital', c.dc, `pick ${p.draft.p}`)
+      : p.proj ? tile('Projected NFL pick', p.proj.pick ? `R${p.proj.round} · #${p.proj.pick}` : 'UDFA', p.proj.pick
+        ? `${p.pos}${p.proj.posRank} of the class by the draft model, if he declares`
+        : `${p.pos}${p.proj.posRank} of the class by the draft model: past the number of ${p.pos}s usually drafted (stats only; it can’t see tape)`)
+        : tile('Recruiting score', c.rec, '')}
     ${row?.market ? tile('Dynasty value', fmtInt(row.market), `market rank #${row.mktRank}`) : ''}
   </div>`;
 }

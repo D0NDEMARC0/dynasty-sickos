@@ -88,7 +88,7 @@ async function collegeCard(box, p) {
   if (!box || !p.espn) return;
   let data, info;
   try { [data, info] = await Promise.all([loadProspects(), loadCareer(p.espn)]); } catch { return; }
-  const career = info.s.length ? info.s : [...(data.careers[p.espn] || [])].sort((a, b) => a.season - b.season);
+  const career = info.s.length ? info.s : [...(data.careers?.[p.espn] || [])].sort((a, b) => a.season - b.season);
   const pr = prospectByCid(p.espn);
   if (!career.length && !pr) return;
   const keys = { WR: ['rec', 'reyd', 'retd', 'tsh', 'dom', 'yprr', 'epat'], TE: ['rec', 'reyd', 'retd', 'tsh', 'dom', 'yprr', 'epat'],

@@ -30,11 +30,11 @@ function positionalCurves(history) {
 
 /**
  * Consensus order for a class. Each available signal becomes a slot within the class, then they're blended:
- * real rookie-draft ADP 40%, dynasty market value 30%, expert rankings 25%, Prospect Score 15%
+ * boards you pasted 50%, real rookie-draft ADP 40%, dynasty market value 30%, expert rankings 25%, Prospect Score 15%
  * (re-normalized to whatever exists for each player). The Prospect Score is position-neutral, so it's mapped
  * onto the market's positional curve: the 2nd-best RB by score takes the slot where 2nd RBs usually go.
  */
-export function consensus(list, { sf, history = [] }) {
+export function consensus(list, { sf, history = [], boards = [] }) {
   const rankBy = (get, asc) => {
     const have = list.filter(p => get(p) != null).sort((a, b) => (asc ? get(a) - get(b) : get(b) - get(a)));
     return new Map(have.map((p, i) => [p, i + 1]));
@@ -53,19 +53,26 @@ export function consensus(list, { sf, history = [] }) {
       scoreSlot.set(p, 0.5 * curve + 0.5 * overall.get(p));
     });
   }
+  // boards you pasted (Footballguys, Draft Sharks, Reddit…): average of their ranks for the player
+  const yours = p => {
+    const r = boards.map(b => (b.blendRank || b.rank)(p)).filter(v => v != null);
+    return r.length ? r.reduce((a, b) => a + b, 0) / r.length : null;
+  };
   const signals = [
+    { label: `your pasted board${boards.length === 1 ? '' : 's'} (${boards.map(b => b.name).join(', ')})`, w: 0.5, m: rankBy(yours, true) },
     { label: 'rookie ADP', w: 0.4, m: rankBy(p => p.adp?.rookie ?? null, true) },
     { label: 'market value', w: 0.3, m: rankBy(market, false) },
     // FantasyPros rookie rankings are 1QB; move QBs up in superflex
     { label: 'expert rankings', w: 0.25, m: rankBy(p => p.ecr?.rank ?? null, true), adj: p => (sf && p.pos === 'QB' ? 0.7 : 1) },
     { label: Object.keys(curves).length ? 'Prospect Score (on the market’s positional curve)' : 'Prospect Score', w: 0.15, m: scoreSlot },
   ];
+  // weighted geometric mean of the slots: one source ranking a player 250th can't bury a #2 from the others
   const out = [];
   for (const p of list) {
     let num = 0, den = 0;
-    for (const s of signals) { const r = s.m.get(p); if (r != null) { num += r * (s.adj ? s.adj(p) : 1) * s.w; den += s.w; } }
+    for (const s of signals) { const r = s.m.get(p); if (r != null) { num += Math.log(Math.max(1, r * (s.adj ? s.adj(p) : 1))) * s.w; den += s.w; } }
     if (!den) continue;
-    out.push({ p, slot: num / den });
+    out.push({ p, slot: Math.exp(num / den) });
   }
   out.sort((a, b) => a.slot - b.slot);
   out.forEach((x, i) => { x.rank = i + 1; });

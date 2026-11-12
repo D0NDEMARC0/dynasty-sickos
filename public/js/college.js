@@ -8,6 +8,7 @@ const SRC = 'ESPN college data via sportsdataverse';
 
 export const CM = {
   g: { label: 'G', fmt: int, desc: 'Games played' },
+  elig: { label: 'Draft elig.', fmt: v => (v == null ? '—' : String(v)), desc: 'First NFL draft the player can enter: three years after his high-school class (from his first college roster year, cross-checked with his recruiting class and class year)' },
   tgt: { label: 'Tgt', fmt: int, desc: 'Targets' },
   rec: { label: 'Rec', fmt: int, desc: 'Receptions' },
   reyd: { label: 'Rec yds', fmt: int, desc: 'Receiving yards' },
@@ -71,11 +72,13 @@ export const CM = {
 for (const m of Object.values(CM)) m.src = SRC;
 
 export const C_COLUMNS = {
-  WR: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'bkAge', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
-  TE: ['g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'bkAge', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
-  RB: ['g', 'car', 'ruyd', 'rutd', 'ypc', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epar', 'rusr', 'csh', 'scsh', 'rdom', 'bkAge', 'tsh', 'rec', 'reyd', 'yprr', 'scpg', 'rztd'],
-  QB: ['g', 'pa', 'pyd', 'ptd', 'int', 'ypa', 'epap', 'cpoe', 'psr', 'skr', 'padot', 'qcar', 'qruyd', 'qypc', 'rutd', 'rypg'],
+  WR: ['elig', 'g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'bkAge', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
+  TE: ['elig', 'g', 'tgt', 'rec', 'reyd', 'retd', 'tsh', 'dom', 'bkAge', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt', 'rztd'],
+  RB: ['elig', 'g', 'car', 'ruyd', 'rutd', 'ypc', 'exp10', 'exp15', 'stuff', 'brk', 'lypc', 'epar', 'rusr', 'csh', 'scsh', 'rdom', 'bkAge', 'tsh', 'rec', 'reyd', 'yprr', 'scpg', 'rztd'],
+  QB: ['elig', 'g', 'pa', 'pyd', 'ptd', 'int', 'ypa', 'epap', 'cpoe', 'psr', 'skr', 'padot', 'qcar', 'qruyd', 'qypc', 'rutd', 'rypg'],
 };
+// not stats: never offered as chart axes
+export const C_NONSTAT = new Set(['g', 'elig']);
 export const C_SCATTER = { WR: ['tprr', 'yprr'], TE: ['tprr', 'yprr'], RB: ['stuff', 'exp10'], QB: ['cpoe', 'epap'] };
 export const C_PROFILE = {
   WR: ['tsh', 'dom', 'yprr', 'tprr', 'yptpa', 'ypt', 'catch', 'epat', 'rsr', 'rec20r', 'deep', 'adot', 'yacr', 'fdt'],
@@ -111,7 +114,7 @@ export async function loadCareer(cid) {
     (cache.careers ||= {})[b] = await fetch(`data/college/c_${b}.json`).then(r => (r.ok ? r.json() : {})).catch(() => ({}));
   }
   const c = cache.careers[b][cid];
-  return c ? { s: [...c.s].sort((x, y) => x.season - y.season), bk: c.bk, rc: c.rc, best: c.best } : { s: [], bk: null, rc: null, best: null };
+  return c ? { s: [...c.s].sort((x, y) => x.season - y.season), bk: c.bk, rc: c.rc, best: c.best, el: c.el || null } : { s: [], bk: null, rc: null, best: null, el: null };
 }
 /** Format a stat from a season row; estimated breakout ages get a ~ prefix. */
 export const fmtRow = (k, row) => (k === 'bkAge' && row?.bkEst && row.bkAge != null ? `~${CM.bkAge.fmt(row.bkAge)}` : fmtC(k, row?.[k]));
