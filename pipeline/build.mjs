@@ -197,7 +197,8 @@ fs.writeFileSync(path.join(OUT, 'idmap.json'), JSON.stringify({ fp2sid }));
 // ---------- college football + prospects ----------
 try {
   log('College football & prospects…');
-  await buildCollege({ current: CURRENT, nflBy, gsis2sid, out: OUT, log });
+  // private sources (Pahowdy's database) only for the copy on your computer, never for the public website
+  await buildCollege({ current: CURRENT, nflBy, gsis2sid, out: OUT, log, privateSources: !PUBLIC_BUILD });
 } catch (e) {
   log('  college data unavailable this run (NFL data still built):', e.message);
 }

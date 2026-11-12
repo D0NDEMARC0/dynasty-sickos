@@ -23,6 +23,8 @@ function blank() {
     // usage
     passSnaps: 0, passSnapsEst: false, snapPctSum: 0, snapGames: 0, offSnaps: 0,
     teamDb: 0, teamTgt: 0, teamAy: 0, teamCar: 0, teamDbSnapW: 0,
+    // vs man / zone coverage (participation coverage tags, 2023+)
+    dbMan: 0, dbZone: 0, tgtMan: 0, tgtZone: 0, ydsMan: 0, ydsZone: 0,
   };
 }
 
@@ -50,7 +52,12 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
 
     if (isDb) {
       T.db++;
-      if (pr) for (const id of pr.off) { const o = get(id); o.passSnaps++; o.games.add(p.game_id); o.gt[p.game_id] = p.posteam; }
+      if (pr) {
+        for (const id of pr.off) {
+          const o = get(id); o.passSnaps++; o.games.add(p.game_id); o.gt[p.game_id] = p.posteam;
+          if (pr.cov === 'M') o.dbMan++; else if (pr.cov === 'Z') o.dbZone++;
+        }
+      }
       if (p.passer_player_id) {
         const q = get(p.passer_player_id);
         q.db++; q.games.add(p.game_id); q.gt[p.game_id] = p.posteam;
@@ -87,6 +94,8 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
         if ((p.receiving_yards ?? 0) >= 20) o.rec20++;
       }
       if (p.touchdown && p.td_player_id === p.receiver_player_id) o.recTd++;
+      if (pr?.cov === 'M') { o.tgtMan++; if (p.complete_pass) o.ydsMan += p.receiving_yards ?? 0; }
+      else if (pr?.cov === 'Z') { o.tgtZone++; if (p.complete_pass) o.ydsZone += p.receiving_yards ?? 0; }
       if (ch) {
         o.ftnTgt++;
         if (ch.is_catchable_ball) o.catchable++;
@@ -224,6 +233,9 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
     const team = Object.entries(o.teams).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     const routes = o.passSnaps * (ROUTE_RATE[pos] ?? 0);
     const tsh = div(o.tgt, o.teamTgt), aysh = div(o.ay, o.teamAy);
+    // routes vs man / zone: on-field dropbacks with that coverage tag × route rate; need 40+ to show a rate
+    const rMan = o.dbMan * (ROUTE_RATE[pos] ?? 0), rZone = o.dbZone * (ROUTE_RATE[pos] ?? 0);
+    const cov = (num, den, d) => (den >= 40 ? r(div(num, den), d) : null);
 
     const s = {
       team, g: gp,
@@ -256,6 +268,8 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       rzTgt: o.rzTgt, ezTgt: o.ezTgt, rzCar: o.rzCar, i10: o.i10Car, i5: o.i5Car,
       // ---- receiving efficiency ----
       yprr: r(div(o.recYds, routes), 2), tprr: r(div(o.tgt, routes)), fdrr: r(div(o.recFd, routes)),
+      yprrMan: cov(o.ydsMan, rMan, 2), yprrZone: cov(o.ydsZone, rZone, 2), tprrMan: cov(o.tgtMan, rMan), tprrZone: cov(o.tgtZone, rZone),
+      routesMan: rMan ? Math.round(rMan) : null, routesZone: rZone ? Math.round(rZone) : null,
       adot: r(div(o.ay, o.tgt), 1), ay: Math.round(o.ay), yacr: r(div(o.yac, o.rec), 1),
       catch: r(div(o.rec, o.tgt)), epat: r(div(o.recEpa, o.tgt)), rsucc: r(div(o.recSucc, o.tgt)),
       rec20: o.rec20, deep: r(div(o.deepTgt, o.tgt)), racr: r(div(o.recYds, o.ay), 2),

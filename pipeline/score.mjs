@@ -21,8 +21,8 @@ export const MODEL = {
 
 // Extra metrics shown as percentile bars on player pages (not all are in the score).
 export const DISPLAY = {
-  WR: ['yprr', 'tprr', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade', 'x_winRate'],
-  TE: ['yprr', 'tprr', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade'],
+  WR: ['yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade', 'x_winRate'],
+  TE: ['yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade'],
   RB: ['ppg', 'osh', 'csh', 'tsh', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
   QB: ['ppg', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
 };

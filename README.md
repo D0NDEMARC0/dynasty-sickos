@@ -35,7 +35,8 @@ weekly — open the link on any phone, tap **Share → Add to Home Screen** for 
 3. Open the **Actions** tab and run **Weekly data update** (or push any commit). In a few minutes the site is live at
    `https://<your-username>.github.io/<repository-name>/`.
 
-The website is built with `--public`, so files in `data/imports/` (e.g. PFF exports) are never included. GitHub
+The website is built with `--public`, so files in `data/imports/` (e.g. PFF exports) and Pahowdy's Prospect Database
+are never included. GitHub
 pauses scheduled jobs in repositories with no activity for 60 days; the job records a small commit each week to
 prevent that. If it ever pauses, re-enable it from the Actions tab.
 
@@ -45,7 +46,8 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
 
 - **Rankings** – dynasty value per player: market value (FantasyCalc + DynastyProcess), Analytics Score, age window,
   and ▲ Buy / ▼ Sell signals where fundamentals and price disagree. Tune the analytics weight and an age tilt.
-- **Analytics** – per-position leaderboards (WR, RB, TE, QB) with percentile shading and an X/Y scatter of any two metrics.
+- **Analytics** – per-position leaderboards (WR, RB, TE, QB) with percentile shading and an X/Y scatter of any two metrics,
+  including YPRR and TPRR vs man and vs zone coverage (2023 onward, from nflverse coverage tags).
 - **Player pages** – percentile bars, weekly fantasy points, season history, game log, and college career.
 - **Prospects** – a **big board** for the next draft class (every FBS QB/RB/WR/TE who's draft-eligible, tiered by
   rookie-draft round, with a projected NFL pick from a draft-capital model trained on recent drafts), plus the
@@ -83,7 +85,12 @@ skew (back-tested at ~7% average error) and marked with `*`.
 **PFF, SumerSports and other paid charting:** their terms prohibit scraping, so the app doesn't scrape them. If you
 have a subscription, export CSVs and drop them in `data/imports/` (see `data/imports/README.md`); real route counts
 then replace the estimates and grades appear on player pages. PFF limits its data to personal, non-public use — keep
-those files and this app private.
+those files and this app private. StatRankings' terms also forbid scraping or feeding its data into other tools, so
+it isn't used; man/zone splits are computed here from open nflverse data instead.
+
+**Pahowdy's Prospect Database** (a public Google Sheet by @pahowdy, shared for personal use) is pulled automatically
+when you run the app on your own computer: his pre/post-draft scores, breakout ages, birth dates (exact prospect ages)
+and PFF college stats appear on player pages. It includes PFF data, so the `--public` website build skips it.
 
 ## Layout
 

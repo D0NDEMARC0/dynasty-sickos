@@ -7,6 +7,7 @@ import { cached, cachedJSON, nflverse, readCSV } from './fetch.mjs';
 import { readParquet } from './load.mjs';
 import { nameKey } from './imports.mjs';
 import { fitDraftModel } from './draftmodel.mjs';
+import { loadPahowdy, slimPahowdy, PAHOWDY } from './pahowdy.mjs';
 
 const SDV = 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download';
 const SKILL = new Set(['QB', 'RB', 'WR', 'TE']);
@@ -296,7 +297,8 @@ const breakoutScore = b => {
 };
 
 // ---------------------------------------------------------------- main
-export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
+// privateSources: true only for the copy of the app on your own computer (never for the public website build)
+export async function buildCollege({ current, nflBy, gsis2sid, out, log, privateSources = false }) {
   const seasons = [];
   for (let y = current - 7; y <= current; y++) seasons.push(y);
   const bySeason = {};
@@ -371,6 +373,32 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
   // ---- career-level info for every college player
   const dobByCid = new Map();
   for (const np of nflBy.values()) if (np.espn_id && np.birth_date) dobByCid.set(String(np.espn_id), np.birth_date);
+  // Pahowdy's Prospect Database (local builds only): match to NFL ids (gsis / PFR) or college players (name + school),
+  // and use its birth dates where we don't have one, so ages and breakout ages are exact instead of estimated
+  let pahowdy = [];
+  if (privateSources) {
+    try { pahowdy = await loadPahowdy(log); } catch (e) { log('  Pahowdy database unavailable:', e.message); }
+    const byPfr = new Map();
+    for (const np of nflBy.values()) if (np.pfr_id) byPfr.set(np.pfr_id, np);
+    const byName = new Map();
+    for (const [cid, list] of career) {
+      const s = list[list.length - 1], k = `${nameKey(s.name)}|${s.pos}`;
+      if (!byName.has(k)) byName.set(k, []);
+      byName.get(k).push({ cid, team: s.team });
+    }
+    for (const r of pahowdy) {
+      const np = (r.gsis && nflBy.get(r.gsis)) || (r.pfr && byPfr.get(r.pfr)) || null;
+      if (np) { r.sid = gsis2sid.get(np.gsis_id) || `g_${np.gsis_id}`; if (np.espn_id) r.cid = String(np.espn_id); }
+      if (!r.cid) {
+        const c = byName.get(`${nameKey(r.name)}|${r.pos}`) || [];
+        const k = schoolKey(r.college);
+        const m = c.length > 1 ? c.filter(x => { const t = schoolKey(x.team); return t && k && (t.includes(k) || k.includes(t)); }) : c;
+        if (m.length === 1) r.cid = m[0].cid;
+      }
+      if (r.cid && r.dob && !dobByCid.has(r.cid)) dobByCid.set(r.cid, r.dob);
+    }
+    log(`  Pahowdy matches: ${pahowdy.filter(r => r.sid).length} NFL players, ${pahowdy.filter(r => r.cid).length} college players`);
+  }
   const YEAR_MS = 365.25 * 864e5;
   const careerInfo = new Map();
   for (const [cid, list] of career) {
@@ -515,6 +543,7 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
     const best = list.length ? bestSeason(p.pos, list) : null;
     p.best = best ? Object.fromEntries(['season', 'cls', 'team', 'tier', 'g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'ruyd', 'rutd', 'pa', 'pyd', 'ptd', 'int', ...PROD[p.pos].map(x => x[0])].map(k => [k, best[k]])) : null;
     p.brk = info?.bk ?? breakout(p.pos, list, p.dob);
+    if (!p.dob && p.cid && dobByCid.has(p.cid)) p.dob = dobByCid.get(p.cid); // e.g. from Pahowdy's database (local builds)
     if (p.dob) p.age = rd((new Date(`${p.draftClass}-04-25`) - new Date(p.dob)) / (365.25 * 864e5), 1);
     const el = p.cid ? eligByCid.get(p.cid) : null;
     if (el) { p.elig = el.year; p.hs = el.hs; }
@@ -606,6 +635,12 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log }) {
   };
   // careers live in the split college/c_XX.json files (loaded per player), which keeps this file small for phones
   fs.writeFileSync(path.join(out, 'prospects.json'), JSON.stringify({ meta, prospects }));
+  // Pahowdy's database: a separate file, written only for the copy on your computer and removed in public builds
+  const phFile = path.join(out, 'pahowdy.json');
+  if (privateSources && pahowdy.length) {
+    const players = pahowdy.filter(r => r.cid || r.sid).map(slimPahowdy);
+    fs.writeFileSync(phFile, JSON.stringify({ meta: { source: 'Pahowdy’s Prospect Database', by: '@pahowdy', url: PAHOWDY.url, rows: pahowdy.length, fetched: new Date().toISOString() }, players }));
+  } else fs.rmSync(phFile, { force: true });
   log(`  prospects: ${Object.entries(classes).map(([y, c]) => `${y} ${c.status} (${c.count})`).join(', ')}`);
   return meta;
 }

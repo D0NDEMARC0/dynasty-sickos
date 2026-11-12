@@ -1,6 +1,7 @@
 // College player profile: full career stats + advanced metrics, breakout age, dominator, combine and Prospect Score.
 import { S, rows } from '../store.js';
-import { loadProspects, loadCareer, prospectByCid, CM, C_PROFILE, COUNT_STATS, fmtC, fmtRow, collegeHeadshot, stars } from '../college.js';
+import { loadProspects, loadCareer, prospectByCid, loadPahowdy, CM, C_PROFILE, COUNT_STATS, fmtC, fmtRow, collegeHeadshot, stars } from '../college.js';
+import { pahowdyCard } from '../pahowdy.js';
 import { esc, fmtInt, fmt1, fmtPct, heat, table } from '../ui.js';
 import { pctBars } from '../charts.js';
 import { mount } from './common.js';
@@ -61,6 +62,12 @@ export async function render(root, params) {
     </div>
     <div class="card"><h2>College career</h2><div class="tablewrap" style="box-shadow:none">${careerTable(pos, career)}</div>
       <p class="muted small" style="margin:8px 0 0">Every season since 2019, including low-volume years. Shading compares each season with qualified FBS ${pos}s that year (shown once a season has enough volume). Source: ESPN college play-by-play via sportsdataverse.</p></div>`;
+  // Pahowdy's Prospect Database: only in the copy of the app on your computer (personal-use data)
+  if (S.mode === 'server') {
+    const ph = await loadPahowdy();
+    const rec = ph?.byCid.get(cid) || (nfl ? ph?.bySid.get(String(nfl.id)) : null);
+    if (rec) el.insertAdjacentHTML('beforeend', pahowdyCard(rec, ph.meta));
+  }
 }
 
 const scoreOf = s => Object.values(s.pct || {}).reduce((a, b) => a + b, 0);

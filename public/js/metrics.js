@@ -25,6 +25,10 @@ export const M = {
   // receiving efficiency
   yprr: { label: 'YPRR', fmt: d2, desc: 'Receiving yards per route run — the most predictive single receiving efficiency stat', src: 'nflverse' },
   tprr: { label: 'TPRR', fmt: pct, desc: 'Targets per route run — how often a player earns the ball when running a route', src: 'nflverse' },
+  yprrMan: { label: 'YPRR vs man', fmt: d2, desc: 'Receiving yards per route run against man coverage. Routes vs that coverage = on-field dropbacks where the defense played it (coverage tags in nflverse participation data) × position route rate; needs 40+ such routes. Participation data is published after each season, so the in-progress season fills in once it ends', src: 'nflverse' },
+  yprrZone: { label: 'YPRR vs zone', fmt: d2, desc: 'Receiving yards per route run against zone coverage. Routes vs that coverage = on-field dropbacks where the defense played it (coverage tags in nflverse participation data) × position route rate; needs 40+ such routes. Participation data is published after each season, so the in-progress season fills in once it ends', src: 'nflverse' },
+  tprrMan: { label: 'TPRR vs man', fmt: pct, desc: 'Targets per route run against man coverage. Routes vs that coverage = on-field dropbacks where the defense played it (coverage tags in nflverse participation data) × position route rate; needs 40+ such routes. Participation data is published after each season, so the in-progress season fills in once it ends', src: 'nflverse' },
+  tprrZone: { label: 'TPRR vs zone', fmt: pct, desc: 'Targets per route run against zone coverage. Routes vs that coverage = on-field dropbacks where the defense played it (coverage tags in nflverse participation data) × position route rate; needs 40+ such routes. Participation data is published after each season, so the in-progress season fills in once it ends', src: 'nflverse' },
   fdrr: { label: '1D/RR', fmt: v => (v == null ? '—' : v.toFixed(3)), desc: 'First downs per route run', src: 'nflverse' },
   adot: { label: 'aDOT', fmt: d1, desc: 'Average depth of target (air yards per target)', src: 'nflverse' },
   sep: { label: 'Separation', fmt: d2, desc: 'Avg. yards between receiver and nearest defender when the pass arrives', src: 'NFL Next Gen Stats' },
@@ -95,16 +99,16 @@ export const LOWER_BETTER = new Set(['drop', 'stuff', 'skr', 'twp', 'press', 'ba
 
 // Column sets for the analytics explorer, per position. Imported columns appear only when data exists.
 export const COLUMNS = {
-  WR: ['ppg', 'routes', 'rp', 'tsh', 'aysh', 'wopr', 'tprr', 'yprr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'btr', 'rzTgt', 'x_grade', 'x_routeGrade', 'x_winRate', 'score'],
-  TE: ['ppg', 'routes', 'rp', 'tsh', 'aysh', 'tprr', 'yprr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rzTgt', 'ezTgt', 'x_grade', 'x_routeGrade', 'score'],
+  WR: ['ppg', 'routes', 'rp', 'tsh', 'aysh', 'wopr', 'tprr', 'yprr', 'yprrMan', 'yprrZone', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'btr', 'rzTgt', 'x_grade', 'x_routeGrade', 'x_winRate', 'score'],
+  TE: ['ppg', 'routes', 'rp', 'tsh', 'aysh', 'tprr', 'yprr', 'yprrMan', 'yprrZone', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rzTgt', 'ezTgt', 'x_grade', 'x_routeGrade', 'score'],
   RB: ['ppg', 'csh', 'osh', 'tsh', 'hvtpg', 'ypc', 'exp10', 'exp15', 'stuff', 'succ', 'ryoe', 'ryoepct', 'yaco', 'ybco', 'btr', 'box8', 'epar', 'routes', 'yprr', 'rzCar', 'i5', 'x_grade', 'x_runGrade', 'x_elusive', 'score'],
   QB: ['ppg', 'db', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ttt', 'aggr', 'par', 'ratt', 'rypc', 'ruypg', 'scr', 'x_grade', 'x_passGrade', 'x_btt', 'score'],
 };
 
 // Percentile bars on the player page.
 export const PROFILE = {
-  WR: ['yprr', 'tprr', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade', 'x_winRate'],
-  TE: ['yprr', 'tprr', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade'],
+  WR: ['yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade', 'x_winRate'],
+  TE: ['yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'x_grade', 'x_routeGrade'],
   RB: ['osh', 'csh', 'tsh', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
   QB: ['epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
 };

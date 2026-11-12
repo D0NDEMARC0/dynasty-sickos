@@ -1,6 +1,6 @@
 // Rookie & prospect classes: big board (plus boards you paste), Prospect Score, consensus rankings, ADP and mock drafts.
 import { S, rows } from '../store.js';
-import { loadProspects, collegeHeadshot, stars } from '../college.js';
+import { loadProspects, loadPahowdy, collegeHeadshot, stars } from '../college.js';
 import { consensus, genericSlots, leagueSlots, runMock } from '../mock.js';
 import { userBoards, addBoard, removeBoard } from '../boards.js';
 import { ordinal } from '../model.js';
@@ -44,6 +44,12 @@ export async function render(root, params, query) {
   const { board, used } = consensus(classList, { sf, history, boards });
   const mockRank = new Map(board.map(x => [x.p, x.rank]));
   const drafts = meta.draftModel?.drafts || [];
+  // Pahowdy's pre-draft score: only in the copy of the app on your computer (personal-use data)
+  const ph = S.mode === 'server' ? await loadPahowdy() : null;
+  const phOf = p => (ph ? (p.cid && ph.byCid.get(String(p.cid))) || (p.sid && ph.bySid.get(String(p.sid))) || null : null);
+  const phCol = classList.some(p => phOf(p)?.pre != null)
+    ? [{ key: 'ph', label: 'Pahowdy', n: true, title: 'Pahowdy’s pre-draft score from his prospect database (shading = percentile vs. his prospects at the position since 2001). Only shown on your computer.', sort: p => phOf(p)?.pre, cell: p => { const r = phOf(p); return `<td class="n heat" style="${heat(r?.prePct)}">${r?.pre != null ? fmt1(r.pre) : '—'}</td>`; } }]
+    : [];
 
   const note = () => {
     const basis = `<b>Order</b> blends ${used.join(', ')}.`;
@@ -172,6 +178,7 @@ export async function render(root, params, query) {
         ? [{ key: 'dc', label: 'Draft cap', n: true, title: 'Draft capital score from pick number', sort: p => p.comps?.dc, cell: p => cell(p.comps?.dc) }]
         : [{ key: 'pdc', label: 'Proj. DC', n: true, title: 'Projected draft capital: scored like real draft capital, from the projected pick (0 = projected undrafted)', sort: p => p.comps?.pdc, cell: p => cell(p.comps?.pdc) }]),
       { key: 'score', label: 'Score', n: true, title: 'Prospect Score (0–100)', sort: p => p.score, cell: p => `<td class="n heat" style="${heat(p.score)}"><b>${p.score ?? '—'}</b></td>` },
+      ...phCol,
       { key: 'mkt', label: 'Dynasty value', n: true, title: 'Current dynasty market value (once in the NFL)', sort: p => market(p), cell: p => `<td class="n">${market(p) ? fmtInt(market(p)) : '<span class="muted">—</span>'}</td>` },
     ];
     list = sortRows(list, cols, st.sort, st.dir);

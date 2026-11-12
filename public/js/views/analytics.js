@@ -78,7 +78,8 @@ export function render(root, params, query) {
     el.querySelector('[data-note]').innerHTML = est && ['WR', 'TE', 'RB'].includes(st.pos)
       ? `<p class="note"><b>${st.season} routes are estimated</b> (marked *): play-level participation data is published after the season, so routes = snap share × team dropbacks × each player’s historical pass-down skew, back-tested at ~${Math.round((S.meta.routeDiag?.[st.season - 1]?.mape ?? 0.07) * 100)}% average error. ${imported ? `${imported} players use imported route counts.` : 'Drop PFF CSV exports into <code>data/imports</code> for exact counts (see Methodology).'}</p>`
       : '';
-    const metricKeys = COLUMNS[st.pos].filter(k => !k.startsWith('x_') || all.some(r => metricValue(r.s, k) != null));
+    // imported metrics, and man/zone splits (published after each season), only show when the season has them
+    const metricKeys = COLUMNS[st.pos].filter(k => !(k.startsWith('x_') || /Man$|Zone$/.test(k)) || all.some(r => metricValue(r.s, k) != null));
     const cols = [
       { key: 'rk', label: '#', n: true, cell: (r, i) => `<td class="rank">${i + 1}</td>` },
       { key: 'name', label: 'Player', sort: r => r.p.name, cell: r => `<td>${playerCell(r.p, { size: 26 })}</td>` },

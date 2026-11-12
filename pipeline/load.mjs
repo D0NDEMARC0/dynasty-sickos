@@ -70,9 +70,11 @@ export async function pbp(season, current) {
 export async function participation(season, current) {
   const p = await nflverse('pbp_participation', `pbp_participation_${season}.parquet`, ttl(season, current));
   if (!p) return null;
-  const rows = await readParquet(p, ['nflverse_game_id', 'play_id', 'offense_players', 'was_pressure']);
+  const rows = await readParquet(p, ['nflverse_game_id', 'play_id', 'offense_players', 'was_pressure', 'defense_man_zone_type']);
   const m = new Map();
-  for (const r of rows) m.set(`${r.nflverse_game_id}|${r.play_id}`, { off: r.offense_players ? r.offense_players.split(';') : [], pressure: r.was_pressure });
+  // coverage tag on pass plays (2023+): M = man, Z = zone
+  const cov = t => (t === 'MAN_COVERAGE' ? 'M' : t === 'ZONE_COVERAGE' ? 'Z' : null);
+  for (const r of rows) m.set(`${r.nflverse_game_id}|${r.play_id}`, { off: r.offense_players ? r.offense_players.split(';') : [], pressure: r.was_pressure, cov: cov(r.defense_man_zone_type) });
   return m;
 }
 

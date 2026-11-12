@@ -18,8 +18,10 @@ if (!meta.public) {
 fs.rmSync(SITE, { recursive: true, force: true });
 fs.cpSync(path.join(ROOT, 'public'), SITE, { recursive: true });
 fs.mkdirSync(path.join(SITE, 'data', 'values'), { recursive: true });
+const PRIVATE_FILES = new Set(['idmap.json', 'pahowdy.json']);
 for (const f of fs.readdirSync(OUT)) {
-  if (f.endsWith('.json') && f !== 'idmap.json') fs.copyFileSync(path.join(OUT, f), path.join(SITE, 'data', f));
+  // personal-use sources (Pahowdy's database) stay on your computer: never copied to the website
+  if (f.endsWith('.json') && !PRIVATE_FILES.has(f)) fs.copyFileSync(path.join(OUT, f), path.join(SITE, 'data', f));
 }
 // full college careers (split files)
 if (fs.existsSync(path.join(OUT, 'college'))) fs.cpSync(path.join(OUT, 'college'), path.join(SITE, 'data', 'college'), { recursive: true });

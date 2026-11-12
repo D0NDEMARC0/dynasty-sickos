@@ -4,7 +4,8 @@ import { M, PROFILE, metricValue } from '../metrics.js';
 import { esc, fmtInt, fmt1, fmtPct, headshot, injTag, signalTag, tipRows, table } from '../ui.js';
 import { columns, pctBars } from '../charts.js';
 import { mount, isRookie } from './common.js';
-import { loadProspects, loadCareer, prospectByCid, CM, fmtRow } from '../college.js';
+import { loadProspects, loadCareer, prospectByCid, loadPahowdy, CM, fmtRow } from '../college.js';
+import { pahowdyCard } from '../pahowdy.js';
 
 export async function render(root, params, query) {
   rows();
@@ -57,7 +58,8 @@ export async function render(root, params, query) {
     <div class="card"><h2>Season history</h2><div class="tablewrap" style="box-shadow:none">${history(p, years)}</div></div>
     <div class="card"><h2>Game log · ${season}</h2><div class="tablewrap" style="box-shadow:none" data-log><span class="spinner"></span></div></div>`
     : '<div class="card empty">No NFL stats yet — value is driven by market price and age.</div>'}
-    <div data-college></div>`;
+    <div data-college></div>
+    <div data-pahowdy></div>`;
 
   el.addEventListener('click', e => {
     const b = e.target.closest('.seg[data-k="season"] button');
@@ -65,6 +67,7 @@ export async function render(root, params, query) {
   });
 
   collegeCard(el.querySelector('[data-college]'), p);
+  pahowdyBox(el.querySelector('[data-pahowdy]'), p);
   if (!season) return;
   const logs = await loadLogs(season);
   const games = logs[p.id] || [];
@@ -81,6 +84,14 @@ export async function render(root, params, query) {
     + `<div class="muted small">${scoringLabel()}${S.settings.scoring === 'league' ? ' (weekly bars exclude fumbles, 2-pt and first-down bonuses)' : ''} · line = season average · hover a week for details</div>`;
   const lg = el.querySelector('[data-log]');
   if (lg) lg.innerHTML = gameLog(p, games);
+}
+
+/** Pahowdy's Prospect Database card — only in the copy of the app on your computer (personal-use data). */
+async function pahowdyBox(box, p) {
+  if (!box || S.mode !== 'server') return;
+  const ph = await loadPahowdy();
+  const rec = ph?.bySid.get(String(p.id)) || (p.espn ? ph?.byCid.get(String(p.espn)) : null);
+  if (rec) box.innerHTML = pahowdyCard(rec, ph.meta);
 }
 
 /** College career summary for players we have college data for (recent draft classes). */

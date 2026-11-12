@@ -116,6 +116,21 @@ export async function loadCareer(cid) {
   const c = cache.careers[b][cid];
   return c ? { s: [...c.s].sort((x, y) => x.season - y.season), bk: c.bk, rc: c.rc, best: c.best, el: c.el || null } : { s: [], bk: null, rc: null, best: null, el: null };
 }
+/**
+ * Pahowdy's Prospect Database (personal use). It only exists in the copy of the app running on your computer;
+ * the public website never has the file, so callers check S.mode === 'server' before asking for it.
+ */
+export async function loadPahowdy() {
+  if (cache.pahowdy === undefined) {
+    const d = await fetch('data/pahowdy.json').then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (d) {
+      d.byCid = new Map(); d.bySid = new Map();
+      for (const r of d.players) { if (r.cid) d.byCid.set(String(r.cid), r); if (r.sid) d.bySid.set(String(r.sid), r); }
+    }
+    cache.pahowdy = d;
+  }
+  return cache.pahowdy;
+}
 /** Format a stat from a season row; estimated breakout ages get a ~ prefix. */
 export const fmtRow = (k, row) => (k === 'bkAge' && row?.bkEst && row.bkAge != null ? `~${CM.bkAge.fmt(row.bkAge)}` : fmtC(k, row?.[k]));
 export const collegeHeadshot = cid => `https://a.espncdn.com/i/headshots/college-football/players/full/${cid}.png`;
