@@ -44,7 +44,7 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
 
 ## Pages
 
-- **Rankings** – dynasty value per player: market value (FantasyCalc + DynastyProcess), Analytics Score, age window,
+- **Rankings** – dynasty value per player: market value (FantasyCalc trade values), Analytics Score, age window,
   and ▲ Buy / ▼ Sell signals where fundamentals and price disagree. Tune the analytics weight and an age tilt.
 - **Analytics** – per-position leaderboards (WR, RB, TE, QB) with percentile shading and an X/Y scatter of any two metrics,
   including YPRR and TPRR vs man and vs zone coverage (2023 onward, from nflverse coverage tags) and expected fantasy
@@ -53,7 +53,9 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
   defenses, man/zone coverage rates, and offensive lines (sack, hit and pressure rates, RB yards before contact).
 - **Player pages** – percentile bars, weekly fantasy points, season history, game log, and college career.
 - **Prospects** – a **big board** for the next draft class (every FBS QB/RB/WR/TE who's draft-eligible, tiered by
-  rookie-draft round, with a projected NFL pick from a draft-capital model trained on recent drafts), plus the
+  rookie-draft round, with a projected NFL pick from a draft-capital model trained on recent drafts, an
+  "expert-style" rank learned from how FantasyPros experts ranked past classes before the draft, and a "Buzz"
+  attention score from Wikipedia page views), plus the
   Prospect Score for the last four rookie classes: college production, breakout age, combine athleticism, recruiting,
   age and draft capital — with Sleeper ADP, FantasyPros rookie rankings and a consensus **mock draft** (generic, or
   your Sleeper league with its real pick order, traded picks and team needs). **Paste any board you read**
@@ -77,9 +79,11 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
 | Pro Football Reference (via nflverse) | yards before/after contact, broken tackles, bad throws, pressures |
 | sportsdataverse (ESPN college data) | college play-by-play + advanced stats (EPA, success rate, explosive runs, shares, CPOE), rosters, recruiting |
 | ffopportunity (ffverse) | expected fantasy points (xFP) and points over expected |
+| Wikimedia (Wikidata, Wikipedia pageviews) | college players' birth dates and the "Buzz" attention signal (public domain) |
+| DynastyProcess archive of FantasyPros rankings | past pre-draft rookie rankings, used to train the expert-style projection |
 | FantasyPros via DynastyProcess, Sleeper | dynasty rookie expert rankings; rookie and startup ADP from real drafts |
 | nflverse combine & draft picks | athletic testing and draft capital for the Prospect Score |
-| FantasyCalc, DynastyProcess | dynasty market values and rookie pick values |
+| FantasyCalc (DynastyProcess fills gaps) | dynasty market values from real trades, and rookie pick values |
 | Sleeper API | player directory, injuries, your league |
 
 **Routes / YPRR:** 2023–25 use on-field participation data. The current season's participation data is published

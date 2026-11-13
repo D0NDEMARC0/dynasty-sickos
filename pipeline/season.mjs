@@ -25,6 +25,8 @@ function blank() {
     teamDb: 0, teamTgt: 0, teamAy: 0, teamCar: 0, teamDbSnapW: 0,
     // vs man / zone coverage (participation coverage tags, 2023+)
     dbMan: 0, dbZone: 0, tgtMan: 0, tgtZone: 0, ydsMan: 0, ydsZone: 0,
+    // FTN "read thrown": first-read targets (receivers) and read progression (QBs)
+    read1: 0, readTgt: 0, teamRead1: 0, qbReadN: 0, qbRead1: 0, qbChk: 0,
   };
 }
 
@@ -37,7 +39,8 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
 
   // ---------- team-game totals ----------
   const TG = new Map(); // `${game}|${team}` -> totals
-  const tg = (g, t) => { const k = `${g}|${t}`; let o = TG.get(k); if (!o) { o = { db: 0, tgt: 0, ay: 0, car: 0, plays: 0 }; TG.set(k, o); } return o; };
+  const tg = (g, t) => { const k = `${g}|${t}`; let o = TG.get(k); if (!o) { o = { db: 0, tgt: 0, ay: 0, car: 0, plays: 0, read1: 0 }; TG.set(k, o); } return o; };
+  const READS = new Set(['1', '2', 'CHK', 'DES', 'SD']); // first read, second+, checkdown, designed, scramble drill
 
   for (const p of plays) {
     if (!p.posteam) continue;
@@ -66,6 +69,8 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
         if (pr && pr.pressure != null) { q.pressN++; if (pr.pressure) q.pressured++; }
         if (ch) { q.ftnDb++; if (ch.is_interception_worthy) q.intWorthy++; if (ch.is_play_action) q.pa++; if (ch.is_qb_out_of_pocket) q.oop++; }
         if (p.pass_attempt === 1 && !p.sack) {
+          const rd = ch?.read_thrown != null ? String(ch.read_thrown) : null;
+          if (READS.has(rd)) { q.qbReadN++; if (rd === '1') q.qbRead1++; if (rd === 'CHK') q.qbChk++; }
           q.att++;
           if (p.complete_pass) q.cmp++;
           if (p.interception) q.int++;
@@ -98,6 +103,8 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       else if (pr?.cov === 'Z') { o.tgtZone++; if (p.complete_pass) o.ydsZone += p.receiving_yards ?? 0; }
       if (ch) {
         o.ftnTgt++;
+        const rd = ch.read_thrown != null ? String(ch.read_thrown) : null;
+        if (READS.has(rd)) { o.readTgt++; if (rd === '1') { o.read1++; T.read1++; } }
         if (ch.is_catchable_ball) o.catchable++;
         if (ch.is_contested_ball) { o.contested++; if (p.complete_pass) o.contestedRec++; }
         if (ch.is_drop) o.drops++;
@@ -187,7 +194,7 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       if (!team) continue;
       const T = TG.get(`${g}|${team}`);
       if (!T) continue;
-      o.teamDb += T.db; o.teamTgt += T.tgt; o.teamAy += T.ay; o.teamCar += T.car;
+      o.teamDb += T.db; o.teamTgt += T.tgt; o.teamAy += T.ay; o.teamCar += T.car; o.teamRead1 += T.read1;
       const sn = snapByPG.get(`${id}|${g}`);
       if (sn) { dbSnapW += sn.pct * T.db; }
     }
@@ -270,6 +277,8 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       yprr: r(div(o.recYds, routes), 2), tprr: r(div(o.tgt, routes)), fdrr: r(div(o.recFd, routes)),
       yprrMan: cov(o.ydsMan, rMan, 2), yprrZone: cov(o.ydsZone, rZone, 2), tprrMan: cov(o.tgtMan, rMan), tprrZone: cov(o.tgtZone, rZone),
       routesMan: rMan ? Math.round(rMan) : null, routesZone: rZone ? Math.round(rZone) : null,
+      // first-read targets (FTN): share of the team's first-read targets in his games, and of his own targets
+      frs: o.teamRead1 >= 20 ? r(div(o.read1, o.teamRead1)) : null, fr1: o.readTgt >= 15 ? r(div(o.read1, o.readTgt)) : null,
       adot: r(div(o.ay, o.tgt), 1), ay: Math.round(o.ay), yacr: r(div(o.yac, o.rec), 1),
       catch: r(div(o.rec, o.tgt)), epat: r(div(o.recEpa, o.tgt)), rsucc: r(div(o.recSucc, o.tgt)),
       rec20: o.rec20, deep: r(div(o.deepTgt, o.tgt)), racr: r(div(o.recYds, o.ay), 2),
@@ -282,6 +291,8 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       db: o.db, epadb: r(div(o.qbEpa, o.db)), cpoe: r(div(o.cpoeSum, o.cpoeN), 2), padot: r(div(o.passAy, o.att), 1),
       skr: r(div(o.sacks, o.db)), deepr: r(div(o.deepAtt, o.att)), press: o.pressN >= 20 ? r(div(o.pressured, o.pressN)) : null,
       twp: r(div(o.intWorthy, o.ftnDb)), par: r(div(o.pa, o.ftnDb)), oop: r(div(o.oop, o.ftnDb)),
+      // read progression (FTN): how often he throws to his first read, and how often he checks down
+      fread: o.qbReadN >= 50 ? r(div(o.qbRead1, o.qbReadN)) : null, chkr: o.qbReadN >= 50 ? r(div(o.qbChk, o.qbReadN)) : null,
       scr: o.scrambles, ruypg: r(div(sum(w => w.rushing_yards), gp), 1),
       // official rushing (box score): attempts include scrambles and kneel-downs
       ratt: sum(w => w.carries), rypc: r(div(sum(w => w.rushing_yards), sum(w => w.carries)), 2),

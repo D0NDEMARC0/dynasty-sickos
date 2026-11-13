@@ -1,4 +1,5 @@
-// Dynasty market values: FantasyCalc (live trade data, format-aware) blended with DynastyProcess (FantasyPros ECR).
+// Dynasty market values: FantasyCalc (values from real dynasty trades, format-aware); DynastyProcess (FantasyPros
+// expert rankings) only fills in players FantasyCalc doesn't value.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,22 +23,21 @@ export async function marketValues({ qb, ppr, teams }) {
     if (!r.player.sleeperId) continue;
     players[r.player.sleeperId] = { fc: r.value, trend: r.trend30Day };
   }
+  // Market = FantasyCalc, i.e. what players actually trade for in real dynasty leagues (format-specific).
+  // DynastyProcess (FantasyPros expert rankings turned into values) disagrees with the trade market on whole groups
+  // (it rates veteran QBs higher and young TEs lower), so it only fills in players FantasyCalc doesn't value,
+  // placed on FantasyCalc's curve by rank so its different scale can't distort them.
   try {
     const { fp2sid } = JSON.parse(fs.readFileSync(path.join(OUT, 'idmap.json'), 'utf8'));
     const dp = (await dynastyProcessValues()).players;
     const key = qb === 2 ? 'value_2qb' : 'value_1qb';
-    const top = arr => arr.sort((a, b) => b - a).slice(0, 24).reduce((a, b) => a + b, 0) / 24;
-    const fcTop = top(Object.values(players).map(p => p.fc));
-    const dpTop = top(dp.map(r => r[key] || 0));
-    const scale = dpTop ? fcTop / dpTop : 1;
-    for (const r of dp) {
-      const sid = fp2sid[r.fp_id];
-      if (!sid || !r[key]) continue;
-      (players[sid] ||= {}).dp = Math.round(r[key] * scale);
-    }
+    dp.filter(r => fp2sid[r.fp_id] && r[key]).sort((a, b) => b[key] - a[key]).forEach((r, i) => {
+      const p = (players[fp2sid[r.fp_id]] ||= {});
+      p.dpRank = i + 1; // expert-consensus rank, kept for reference
+    });
   } catch (e) { console.warn('DynastyProcess values unavailable:', e.message); }
-  for (const p of Object.values(players)) {
-    p.market = p.fc != null && p.dp != null ? Math.round(0.65 * p.fc + 0.35 * p.dp) : p.fc ?? Math.round((p.dp ?? 0) * 0.85);
-  }
+  const curve = Object.values(players).map(p => p.fc).filter(v => v != null).sort((a, b) => b - a);
+  const valueAtRank = k => (k <= curve.length ? curve[k - 1] : Math.max(1, Math.round((curve[curve.length - 1] || 1) * 0.97 ** (k - curve.length))));
+  for (const p of Object.values(players)) p.market = p.fc ?? (p.dpRank ? valueAtRank(p.dpRank) : 0);
   return { players, picks, format: { qb, ppr, teams }, fetched: new Date().toISOString() };
 }

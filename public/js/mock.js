@@ -40,19 +40,26 @@ export function consensus(list, { sf, history = [], boards = [] }) {
     return new Map(have.map((p, i) => [p, i + 1]));
   };
   const curves = positionalCurves(history);
-  const overall = rankBy(p => p.score ?? null, false); // position-neutral quality
-  const scoreSlot = new Map(), byPos = {};
-  for (const p of list) if (p.score != null) (byPos[p.pos] ||= []).push(p);
-  for (const [pos, arr] of Object.entries(byPos)) {
-    arr.sort((a, b) => b.score - a.score);
-    const c = curves[pos] || [];
-    arr.forEach((p, i) => {
-      if (!c.length) { scoreSlot.set(p, overall.get(p)); return; }
-      const curve = i < c.length ? c[i] : c[c.length - 1] + (i - c.length + 1) * 4;
-      // half "where this position-rank usually goes", half overall quality — so a weak RB1 doesn't jump the class
-      scoreSlot.set(p, 0.5 * curve + 0.5 * overall.get(p));
-    });
-  }
+  const qbAdj = p => (sf && p.pos === 'QB' ? 0.5 : 1); // 1QB-based ranks: QBs move up in superflex
+  // A signal's order within each position, placed on the market's positional curve: half "where the k-th QB/RB/WR/TE
+  // of a class usually goes in this format", half its overall rank — so a weak RB1 doesn't jump the class.
+  const onCurve = (get, adj) => {
+    const overall = rankBy(get, true);
+    const slot = new Map(), byPos = {};
+    for (const p of list) if (get(p) != null) (byPos[p.pos] ||= []).push(p);
+    for (const [pos, arr] of Object.entries(byPos)) {
+      arr.sort((a, b) => get(a) - get(b));
+      const c = curves[pos] || [];
+      arr.forEach((p, i) => {
+        const o = overall.get(p) * (adj ? adj(p) : 1);
+        if (!c.length) { slot.set(p, o); return; }
+        const curve = i < c.length ? c[i] : c[c.length - 1] + (i - c.length + 1) * 4;
+        slot.set(p, 0.5 * curve + 0.5 * o);
+      });
+    }
+    return slot;
+  };
+  const scoreSlot = onCurve(p => (p.score == null ? null : -p.score));
   // boards you pasted (Footballguys, Draft Sharks, Reddit…): average of their ranks for the player
   const yours = p => {
     const r = boards.map(b => (b.blendRank || b.rank)(p)).filter(v => v != null);
@@ -63,7 +70,10 @@ export function consensus(list, { sf, history = [], boards = [] }) {
     { label: 'rookie ADP', w: 0.4, m: rankBy(p => p.adp?.rookie ?? null, true) },
     { label: 'market value', w: 0.3, m: rankBy(market, false) },
     // FantasyPros rookie rankings are 1QB; move QBs up in superflex
-    { label: 'expert rankings', w: 0.25, m: rankBy(p => p.ecr?.rank ?? null, true), adj: p => (sf && p.pos === 'QB' ? 0.7 : 1) },
+    { label: 'expert rankings', w: 0.25, m: rankBy(p => p.ecr?.rank ?? null, true), adj: qbAdj },
+    // before FantasyPros ranks a class: a model of how its experts ranked past classes from the same profile
+    // (pedigree, production, age, school, size, Wikipedia attention), placed on the market's positional curve
+    { label: 'expert-style projection (on the market’s positional curve)', w: 0.35, m: onCurve(p => (p.ecr ? null : p.xecr ?? null), qbAdj) },
     { label: Object.keys(curves).length ? 'Prospect Score (on the market’s positional curve)' : 'Prospect Score', w: 0.15, m: scoreSlot },
   ];
   // weighted geometric mean of the slots: one source ranking a player 250th can't bury a #2 from the others

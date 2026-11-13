@@ -6,8 +6,13 @@ import path from 'node:path';
 import { cached, cachedJSON, nflverse, readCSV } from './fetch.mjs';
 import { readParquet } from './load.mjs';
 import { nameKey } from './imports.mjs';
-import { fitDraftModel } from './draftmodel.mjs';
+import { fitDraftModel, ridge, spearman } from './draftmodel.mjs';
 import { loadPahowdy, slimPahowdy, PAHOWDY } from './pahowdy.mjs';
+import { wikiPlayers, recentViews, historyViews, avgViews } from './wiki.mjs';
+import { fileURLToPath } from 'node:url';
+
+// pre-draft Wikipedia pageviews of past classes (CC0 Wikimedia data), committed so builds don't re-fetch history
+const WIKI_SEED = fileURLToPath(new URL('./wiki_history.json', import.meta.url));
 
 const SDV = 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download';
 const SKILL = new Set(['QB', 'RB', 'WR', 'TE']);
@@ -258,8 +263,9 @@ function seasonProd(s) {
 }
 const recruitScore = rc => (!rc ? 0 : rc.grade ? Math.max(0, Math.min(100, ((rc.grade - 78) / 22) * 100)) : ({ 5: 95, 4: 65, 3: 30, 2: 5 }[rc.stars] ?? 0));
 export const DRAFT_FEATURES = ['best-season production', 'best-season production (squared)', 'final-season production', 'recruiting grade',
-  'no recruiting profile', 'breakout', 'age on draft day', 'Power 4 school', 'FCS school', 'qualified seasons', 'height', 'weight'];
-function draftFeatures(list, info, hs, draftYear) {
+  'no recruiting profile', 'breakout', 'age on draft day', 'Power 4 school', 'FCS school', 'qualified seasons', 'height', 'weight',
+  'Wikipedia attention (log of monthly page views)'];
+function draftFeatures(list, info, hs, draftYear, attention = 0) {
   const last = list[list.length - 1];
   const prods = list.map(seasonProd).filter(v => v != null);
   const best = prods.length ? Math.max(...prods) : 0;
@@ -271,6 +277,7 @@ function draftFeatures(list, info, hs, draftYear) {
     last.tier === 'P4' || last.tier === 'P5' ? 1 : 0, last.tier === 'FCS' ? 1 : 0,
     list.filter(s => s.q).length,
     last.ht ?? NaN, last.wt ?? NaN,
+    attention,
   ];
 }
 
@@ -399,6 +406,33 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
     }
     log(`  Pahowdy matches: ${pahowdy.filter(r => r.sid).length} NFL players, ${pahowdy.filter(r => r.cid).length} college players`);
   }
+  // Wikipedia (Wikidata, CC0): which college players have an article (→ attention from pageviews) and their birth
+  // dates. Matched on name; birth year must fit the player's first college season, and colleges break ties.
+  const wikiOf = new Map();
+  {
+    const wiki = await wikiPlayers(log);
+    const byKey = new Map();
+    for (const w of wiki) {
+      for (const nm of new Set([w.name, w.title.replace(/_\([^)]*\)$/, '').replace(/_/g, ' ')])) {
+        const k = nameKey(nm);
+        if (!byKey.has(k)) byKey.set(k, []);
+        if (!byKey.get(k).includes(w)) byKey.get(k).push(w);
+      }
+    }
+    for (const [cid, list] of career) {
+      const last = list[list.length - 1];
+      let c = (byKey.get(nameKey(last.name)) || []).filter(w => { const y = Number(String(w.dob).slice(0, 4)); return !w.dob || (list[0].season - y >= 16 && list[0].season - y <= 22); });
+      if (c.length > 1) {
+        const teams = list.map(s => schoolKey(s.team)).filter(Boolean);
+        const m = c.filter(w => w.colleges.some(col => { const k = schoolKey(col); return teams.some(t => k.includes(t) || t.includes(k)); }));
+        if (m.length) c = m;
+      }
+      if (c.length !== 1) continue;
+      wikiOf.set(cid, c[0]);
+      if (c[0].dob && !dobByCid.has(cid)) dobByCid.set(cid, c[0].dob);
+    }
+    log(`  Wikipedia articles matched: ${wikiOf.size} college players`);
+  }
   const YEAR_MS = 365.25 * 864e5;
   const careerInfo = new Map();
   for (const [cid, list] of career) {
@@ -463,16 +497,65 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
     if (np?.espn_id && !draftedByCid.has(String(np.espn_id))) draftedByCid.set(String(np.espn_id), r);
     draftedByName.set(`${nameKey(r.pfr_player_name)}|${posOf(r.position)}|${r.season}`, r);
   }
-  const trainRows = [];
+  // pre-draft FantasyPros rookie rankings for past classes (DynastyProcess archives every ECR scrape): the target
+  // for the "expert-style" model, which learns what fantasy experts value from the same college profile
+  const ecrSnaps = await preDraftRookieEcr(dataStart + 2, current, log);
+  // training pool: everyone who left college, draft-eligible, with a qualified season
+  const leavers = [];
   for (const [cid, list] of career) {
     const last = list[list.length - 1], Y = last.season + 1, el = eligByCid.get(cid);
     if (Y < dataStart + 2 || Y > current || !list.some(s => s.q) || el.year > Y) continue;
     if ((lastRoster.get(cid) ?? last.season) > last.season) continue; // still on a roster (redshirt / injury year): hasn't left
+    leavers.push({ cid, list, last, Y, el });
+  }
+  // Wikipedia attention: average monthly pageviews from September of the final season through January (through
+  // last month for players still in school), as a percentile within the class. No article = no attention.
+  const upcomingPool = [...(bySeason[current]?.players.keys() || [])].filter(cid => eligByCid.get(cid)?.year <= current + 1);
+  const hist = await historyViews(leavers.map(l => wikiOf.get(l.cid)?.title).filter(Boolean),
+    { seedFile: WIKI_SEED, log, budgetMs: Number(process.env.WIKI_BUDGET_MIN || 8) * 60e3 });
+  const recent = await recentViews(upcomingPool.map(cid => wikiOf.get(cid)?.title).filter(Boolean), log);
+  const attention = new Map(); // `${cid}|${draft year}` -> percentile within the class
+  const buzzPct = new Map(); // `${cid}|${draft year}` -> percentile within the class (for display)
+  const rankAttention = (cids, Y, viewsOf) => {
+    // model feature: log10(1 + monthly views), which keeps how much bigger the biggest names are (a percentile caps
+    // everyone famous at ~99). No article = 0; an article whose views couldn't be fetched gets the typical value.
+    const vals = cids.map(cid => { const w = wikiOf.get(cid); return w ? viewsOf(w.title) ?? null : 0; });
+    const logs = vals.map(v => (v == null ? null : Math.log10(1 + v)));
+    const art = cids.map((cid, i) => (wikiOf.has(cid) ? logs[i] : null)).filter(v => v != null).sort((a, b) => a - b);
+    const typical = art.length ? art[Math.floor(art.length / 2)] : 0;
+    const full = logs.map(v => v ?? typical);
+    const f = midRankFn(full);
+    cids.forEach((cid, i) => { attention.set(`${cid}|${Y}`, full[i]); buzzPct.set(`${cid}|${Y}`, Math.round(f(full[i]) ?? 0)); });
+  };
+  for (let Y = dataStart + 2; Y <= current; Y++) rankAttention(leavers.filter(l => l.Y === Y).map(l => l.cid), Y, t => avgViews(hist[t], `${Y - 1}09`, `${Y}01`));
+  rankAttention(upcomingPool, current + 1, t => recent[t]);
+  if (process.env.WRITE_WIKI_SEED) {
+    // keep only each past player's pre-draft window (Sep–Jan): small enough to commit
+    const seed = {};
+    for (const l of leavers) {
+      const t = wikiOf.get(l.cid)?.title, m = t && hist[t];
+      if (!m) continue;
+      seed[t] = Object.fromEntries(Object.entries(m).filter(([k]) => k >= `${l.Y - 1}09` && k <= `${l.Y}01`));
+    }
+    fs.writeFileSync(WIKI_SEED, JSON.stringify(seed));
+    log(`  wrote ${Object.keys(seed).length} articles to ${path.basename(WIKI_SEED)}`);
+  }
+  const trainRows = [], emRows = [];
+  for (const { cid, list, last, Y, el } of leavers) {
     const d = draftedByCid.get(cid) || draftedByName.get(`${nameKey(last.name)}|${last.pos}|${Y}`);
-    trainRows.push({ pos: last.pos, year: Y, x: draftFeatures(list, careerInfo.get(cid), el.hs, Y), y: d ? draftCapital(d.pick) : 0 });
+    const x = draftFeatures(list, careerInfo.get(cid), el.hs, Y, attention.get(`${cid}|${Y}`) ?? 0);
+    trainRows.push({ pos: last.pos, year: Y, x, y: d ? draftCapital(d.pick) : 0 });
+    const snap = ecrSnaps[Y];
+    if (snap) {
+      const rank = snap.ranks.get(`${nameKey(last.name)}|${last.pos}`);
+      // unranked = past the end of the experts' list
+      emRows.push({ pos: last.pos, year: Y, x, rank: rank ?? null, y: -Math.log(rank ?? snap.n + 25) });
+    }
   }
   const dm = fitDraftModel(trainRows);
   log(`  draft-capital model: ${trainRows.length} players who left college (${trainRows.filter(r => r.y > 0).length} drafted), back-test ${Object.entries(dm.test).map(([p, t]) => `${p} ρ ${t.rho}, hit ${t.hit}`).join(' · ')}`);
+  const em = expertModel(emRows);
+  if (em) log(`  expert-style model: ${emRows.length} players, ${emRows.filter(r => r.rank).length} ranked by FantasyPros before ${Object.keys(ecrSnaps).join('/')} drafts; back-test rank correlation ${em.test.rho}, top-24 overlap ${em.test.top24}`);
   // where the k-th QB / RB / WR / TE taken has gone in the last 8 NFL drafts. The model ranks players within a
   // position; this curve turns that rank into a pick, so each class gets a realistic number of players per position.
   const byDraft = {};
@@ -550,7 +633,12 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
     if (!p.draft && el) {
       p.yr = current - el.hs + 1; // college season number this fall (3 = third year out of high school)
       if (p.age == null) { p.age = rd(draftAgeFromHs(p.draftClass, el.hs), 1); p.ageEst = true; }
-      if (list.length && dm.predict[p.pos]) p.ev = Math.max(0, dm.predict[p.pos](draftFeatures(list, info, el.hs, p.draftClass)));
+      if (list.length) {
+        p.buzz = buzzPct.get(`${p.cid}|${p.draftClass}`) ?? null; // Wikipedia attention percentile in the class (display)
+        const x = draftFeatures(list, info, el.hs, p.draftClass, attention.get(`${p.cid}|${p.draftClass}`) ?? 0);
+        if (dm.predict[p.pos]) p.ev = Math.max(0, dm.predict[p.pos](x));
+        if (em?.predict[p.pos]) p.xes = em.predict[p.pos](x);
+      }
     }
   }
   // projected NFL draft slot "if he declares": the k-th best QB/RB/WR/TE by the model takes the k-th slot at the position
@@ -563,6 +651,8 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
     });
   }
   preDraft.sort((a, b) => (a.proj.pick ?? 999) - (b.proj.pick ?? 999) || b.ev - a.ev).forEach((p, i) => { p.proj.rank = i + 1; });
+  // expert-style rank: where FantasyPros experts would likely put him, by how they ranked similar past prospects (1QB)
+  prospects.filter(p => !p.draft && p.xes != null).sort((a, b) => b.xes - a.xes).forEach((p, i) => { p.xecr = i + 1; delete p.xes; });
   for (const pos of Object.keys(PROD)) {
     const group = prospects.filter(p => p.pos === pos);
     const feat = {};
@@ -596,7 +686,7 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
   // the pre-combine board can be long: keep the strongest 300, plus everyone the model projects to be drafted and
   // every 4–5 star recruit, so well-known names never disappear from the board
   const watch = prospects.filter(p => p.status === 'watch').sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  const dropped = new Set(watch.slice(300).filter(p => !p.proj?.pick && !(p.recruit?.stars >= 4)));
+  const dropped = new Set(watch.slice(300).filter(p => !p.proj?.pick && !(p.recruit?.stars >= 4) && !(p.xecr <= 120)));
   for (let i = prospects.length - 1; i >= 0; i--) if (dropped.has(prospects[i])) prospects.splice(i, 1);
   if (classes[upcoming]?.status === 'watch') classes[upcoming].count = prospects.filter(p => p.draftClass === upcoming).length;
 
@@ -626,6 +716,7 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
     current, upcoming, collegeSeasons: Object.keys(bySeason).map(Number), leaderboardSeasons: latestSeasons,
     classes: Object.fromEntries(Object.entries(classes).sort((a, b) => b[0] - a[0])), weights: PROSPECT_WEIGHTS, production: PROD, breakout: BREAKOUT,
     eligibility: { yearsOutOfHighSchool: YEARS_OUT_OF_HS },
+    expertModel: em ? { ...em.test, snapshots: Object.fromEntries(Object.entries(ecrSnaps).map(([y, s]) => [y, s.date])) } : null,
     draftModel: {
       features: DRAFT_FEATURES, test: dm.test, players: trainRows.length, drafted: trainRows.filter(r => r.y > 0).length,
       slots: Object.fromEntries(Object.entries(posSlots).map(([pos, a]) => [pos, a.map(x => Math.round(x))])),
@@ -643,6 +734,63 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
   } else fs.rmSync(phFile, { force: true });
   log(`  prospects: ${Object.entries(classes).map(([y, c]) => `${y} ${c.status} (${c.count})`).join(', ')}`);
   return meta;
+}
+
+// ---------------------------------------------------------------- expert-style projection
+/**
+ * Pre-draft FantasyPros rookie rankings for each past class, from DynastyProcess's archive of every ECR scrape:
+ * the first snapshot from February on (after the college season) where most players have no NFL team yet.
+ */
+async function preDraftRookieEcr(fromYear, toYear, log) {
+  const out = {};
+  try {
+    const f = await cached('https://github.com/dynastyprocess/data/raw/master/files/db_fpecr.parquet', 'db_fpecr.parquet', 24 * 7);
+    if (!f) return out;
+    const rows = await readParquet(f, ['page_type', 'scrape_date', 'player', 'pos', 'team', 'ecr']);
+    const byDate = new Map();
+    for (const r of rows) {
+      if (r.page_type !== 'dynasty-rk') continue;
+      const d = String(r.scrape_date).slice(0, 10);
+      if (!byDate.has(d)) byDate.set(d, []);
+      byDate.get(d).push(r);
+    }
+    const dates = [...byDate.keys()].sort();
+    for (let Y = fromYear; Y <= toYear; Y++) {
+      const d = dates.find(x => x >= `${Y}-02-01` && x <= `${Y}-04-20`
+        && byDate.get(x).filter(r => !r.team || r.team === 'FA').length >= byDate.get(x).length * 0.7);
+      if (!d) continue;
+      const list = byDate.get(d).filter(r => r.ecr != null).sort((a, b) => a.ecr - b.ecr);
+      const ranks = new Map();
+      list.forEach((r, i) => { const k = `${nameKey(r.player)}|${posOf(r.pos)}`; if (!ranks.has(k)) ranks.set(k, i + 1); });
+      out[Y] = { date: d, n: list.length, ranks };
+    }
+  } catch (e) { log('  FantasyPros ranking history unavailable:', e.message); }
+  return out;
+}
+
+/** Per-position ridge on −ln(pre-draft expert rank), back-tested one class at a time. */
+function expertModel(rows) {
+  if (rows.filter(r => r.rank).length < 100) return null;
+  const fit = R => {
+    const f = {};
+    for (const pos of SKILL) { const P = R.filter(r => r.pos === pos); if (P.length >= 40) f[pos] = ridge(P.map(r => r.x), P.map(r => r.y), 2); }
+    return f;
+  };
+  const predict = fit(rows);
+  const years = [...new Set(rows.map(r => r.year))].sort((a, b) => a - b);
+  const rho = [], top = [];
+  for (const yr of years) {
+    const f = fit(rows.filter(r => r.year !== yr));
+    const te = rows.filter(r => r.year === yr && f[r.pos]).map(r => ({ ...r, s: f[r.pos](r.x) }));
+    const ranked = te.filter(r => r.rank);
+    if (ranked.length < 20) continue;
+    rho.push(spearman(ranked.map(r => r.s), ranked.map(r => -r.rank)));
+    const predTop = new Set([...te].sort((a, b) => b.s - a.s).slice(0, 24));
+    const actualTop = ranked.filter(r => r.rank <= 24);
+    top.push(actualTop.filter(r => predTop.has(r)).length / Math.max(1, actualTop.length));
+  }
+  const avg = a => (a.length ? Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 100) / 100 : null);
+  return { predict, test: { rho: avg(rho), top24: avg(top), classes: years, players: rows.length, ranked: rows.filter(r => r.rank).length } };
 }
 
 // ---------------------------------------------------------------- consensus rookie rankings + ADP

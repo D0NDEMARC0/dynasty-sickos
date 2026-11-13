@@ -1,9 +1,10 @@
-// Dynasty player rankings: market value adjusted by the analytics + age model, with Buy/Sell signals.
+// Dynasty player rankings: the trade market (FantasyCalc) by default, plus the analytics + age model's Lab value
+// and Buy/Sell signals.
 import { S, rows, persist, bump, scoringLabel } from '../store.js';
 import { esc, fmtInt, fmt1, posTag, signalTag, minibar, table, sortRows, signed } from '../ui.js';
 import { playerCell, anCell, trendCell, isRookie, seasonTag, mount } from './common.js';
 
-const st = { pos: 'ALL', q: '', rookies: false, signal: 'all', sort: 'rank', dir: 'asc', limit: 150, model: false };
+const st = { pos: 'ALL', q: '', rookies: false, signal: 'all', sort: 'market', dir: 'desc', limit: 150, model: false };
 
 export function render(root, params, query) {
   if (query.pos) st.pos = query.pos.toUpperCase();
@@ -13,7 +14,7 @@ export function render(root, params, query) {
     <div class="page-head">
       <div>
         <h1>Dynasty rankings</h1>
-        <p class="sub">Market value (FantasyCalc trade data blended with DynastyProcess consensus), adjusted by each player’s Analytics Score and age window. <span class="muted">${esc(fmt)}</span></p>
+        <p class="sub">Ranked by market value: what each player actually trades for in real dynasty leagues in your format (FantasyCalc). <b>Lab value</b> is the app’s own take, adjusted by Analytics Score and age window; sort by it to see the model’s order. <span class="muted">${esc(fmt)}</span></p>
       </div>
       <button class="btn" data-act="model">${st.model ? 'Hide' : 'Tune'} model</button>
     </div>
@@ -52,12 +53,12 @@ export function render(root, params, query) {
       && (st.signal === 'all' || r.signal === st.signal)
       && (!q || r.p.name.toLowerCase().includes(q) || (r.p.team || '').toLowerCase() === q));
     const cols = [
-      { key: 'rank', label: '#', n: true, sort: r => r.labRank, cell: r => `<td class="rank">${r.labRank}</td>` },
+      { key: 'rank', label: '#', n: true, title: 'Position in the current sort (default: market value)', sort: r => r.mktRank, cell: (r, i) => `<td class="rank">${i + 1}</td>` },
       { key: 'name', label: 'Player', sort: r => r.p.name, cell: r => `<td>${playerCell(r.p)}</td>` },
-      { key: 'pos', label: 'Pos rk', sort: r => r.posRank, cell: r => `<td>${posTag(r.p.pos)} <span class="small">${r.posRank}</span></td>` },
+      { key: 'pos', label: 'Pos rk', title: 'Rank at the position by market value (by Lab value when sorted by it)', sort: r => (st.sort === 'lab' ? r.posRank : r.mktPosRank), cell: r => `<td>${posTag(r.p.pos)} <span class="small">${st.sort === 'lab' ? r.posRank : r.mktPosRank}</span></td>` },
       { key: 'age', label: 'Age', n: true, sort: r => r.p.age, cell: r => `<td class="n">${fmt1(r.p.age)}</td>` },
       { key: 'lab', label: 'Lab value', n: true, title: 'Model-adjusted dynasty value', sort: r => r.lab, cell: r => `<td class="n">${minibar(r.lab, maxLab, fmtInt(r.lab))}</td>` },
-      { key: 'market', label: 'Market', n: true, title: 'Blended market value (rank in parentheses)', sort: r => r.market, cell: r => `<td class="n">${fmtInt(r.market)} <span class="muted small">#${r.mktRank}</span></td>` },
+      { key: 'market', label: 'Market', n: true, title: 'FantasyCalc trade value: what the player trades for in real dynasty leagues in this format (overall rank)', sort: r => r.market, cell: r => `<td class="n">${fmtInt(r.market)} <span class="muted small">#${r.mktRank}</span></td>` },
       { key: 'signal', label: 'Model vs market', sort: r => r.mult, cell: r => `<td>${signalTag(r.signal, r.mult)}</td>` },
       { key: 'an', label: 'Analytics', n: true, title: 'Analytics Score (0–100, positional percentile blend)', sort: r => r.p.an, cell: r => anCell(r.p) },
       { key: 'edge', label: 'Edge', n: true, title: 'Fundamentals rank minus price rank within the position (percentile points)', sort: r => r.edge, cell: r => `<td class="n ${r.edge > 0 ? 'up' : r.edge < 0 ? 'down' : 'muted'}">${r.edge == null ? '—' : signed(r.edge)}</td>` },

@@ -11,6 +11,7 @@ const st = { cls: null, view: null, pos: 'ALL', q: '', sort: 'mock', dir: 'asc',
 const VIEWS = ['board', 'rankings', 'mock'];
 // other public boards, for comparison (links only — their content isn't copied into this app)
 const OTHER_BOARDS = [
+  ['FantasyPros devy consensus (free)', 'https://www.fantasypros.com/2026/01/devy-fantasy-football-rankings-2026'],
   ['KeepTradeCut devy', 'https://keeptradecut.com/devy-rankings'],
   ['Footballguys devy', 'https://www.footballguys.com/rankings/duration/devy'],
   ['Draft Sharks rookies', 'https://www.draftsharks.com/dynasty-rankings/rookies/superflex'],
@@ -55,9 +56,10 @@ export async function render(root, params, query) {
     const basis = `<b>Order</b> blends ${used.join(', ')}.`;
     if (status === 'watch') {
       return `<b>${st.cls} big board.</b> Every FBS QB, RB, WR and TE who can enter the ${st.cls} draft (three years out of high school: true juniors, redshirt sophomores, and players who returned to school), ranked for ${sf ? 'superflex' : '1QB'}. ${basis} `
-        + `The Prospect Score leans on <b>projected NFL draft capital</b> from a model trained on the ${drafts.length ? `${drafts[0]}–${drafts[drafts.length - 1]}` : 'recent'} drafts: recruiting, production vs. competition, breakout, age, school and size. `
-        + 'It can’t see tape or scouting reports, so pedigree QBs with modest stats rank lower here than on fantasy sites. Paste boards you trust below to blend them in. '
-        + 'FantasyPros expert ranks and Sleeper ADP are added automatically once they’re published; in March this becomes the combine class, and after the NFL Draft the drafted class.';
+        + '<b>Expert-style</b> = where FantasyPros experts would likely rank him, learned from how they ranked past classes before the draft; '
+        + '<b>Buzz</b> = his Wikipedia page views vs. the class, the hype and draft buzz stats can’t see. '
+        + `The Prospect Score adds <b>projected NFL draft capital</b> from a model trained on the ${drafts.length ? `${drafts[0]}–${drafts[drafts.length - 1]}` : 'recent'} drafts. Paste boards you trust below to blend them in. `
+        + 'Real FantasyPros ranks and Sleeper ADP replace the projections automatically once they’re published; in March this becomes the combine class, and after the NFL Draft the drafted class.';
     }
     if (status === 'combine') return `<b>${st.cls} class — combine invitees.</b> Draft capital is added automatically after the NFL Draft. ${basis}`;
     return `<b>${st.cls} draft class.</b> ${basis}`;
@@ -86,6 +88,15 @@ export async function render(root, params, query) {
   const market = p => (p.sid ? S.rowById.get(p.sid)?.market || null : null);
   const adpOf = p => p.adp?.rookie ?? (sf ? p.adp?.dsf : p.adp?.d1qb) ?? null;
   const hasAdp = classList.some(p => adpOf(p) != null), hasEcr = classList.some(p => p.ecr);
+  // pre-draft signals: expert-style projected rank and public attention (Wikipedia pageviews)
+  const preCols = (sortable = false) => [
+    ...(classList.some(p => p.xecr) ? [{ key: 'xecr', label: 'Expert-style', n: true, sort: sortable ? p => p.xecr : undefined,
+      title: 'Where FantasyPros experts would likely rank him (1QB), from how they ranked past prospects with a similar profile before the draft. Replaced by the real expert ranking once FantasyPros ranks this class',
+      cell: x => { const p = x.p || x; return `<td class="n">${p.ecr ? '<span class="muted">—</span>' : p.xecr ?? '—'}</td>`; } }] : []),
+    ...(classList.some(p => p.buzz != null) ? [{ key: 'buzz', label: 'Buzz', n: true, sort: sortable ? p => p.buzz : undefined,
+      title: 'Public attention: his Wikipedia page views over the last 60 days, as a percentile of the class (no article = low). Hype that scouting and expert rankings follow',
+      cell: x => { const p = x.p || x; return `<td class="n heat" style="${heat(p.buzz)}">${p.buzz ?? '—'}</td>`; } }] : []),
+  ];
   const filterQ = p => {
     const q = st.q.trim().toLowerCase();
     return (st.pos === 'ALL' || p.pos === st.pos) && (!q || p.name.toLowerCase().includes(q) || (p.school || '').toLowerCase().includes(q));
@@ -96,7 +107,7 @@ export async function render(root, params, query) {
       <div class="bhead">
         <div>
           <h2 style="margin:0">Your boards</h2>
-          <p class="muted small" style="margin:4px 0 0">Paste a ranking from any site you read (Footballguys, Draft Sharks, KeepTradeCut, a r/DynastyFF post). It counts for half of the order above and gets its own column. It’s saved only in this browser.</p>
+          <p class="muted small" style="margin:4px 0 0">Paste a ranking from any site you read (Footballguys, Draft Sharks, KeepTradeCut, a r/DynastyFF post). It counts for half of the order above and gets its own column. It’s saved only in this browser. Quickest real consensus: FantasyPros publishes a free devy ranking (link below). Select the list, copy, and paste it here.</p>
         </div>
         ${st.adding ? '' : '<button class="btn" data-act="addboard">+ Paste a board</button>'}
       </div>
@@ -123,6 +134,7 @@ export async function render(root, params, query) {
         { label: 'Year', title: 'College season this fall, counted from high school (3rd = true junior or redshirt sophomore)', cell: x => `<td>${x.p.yr ? ordinal(x.p.yr) : '—'}</td>` },
         { label: 'Eligible', title: `First NFL draft he can enter (three years out of high school). “Returned” = he could have entered an earlier draft and went back to school`, cell: x => `<td>${eligCell(x.p, st.cls)}</td>` },
         { label: 'Proj. NFL pick', n: true, title: 'Where the model projects him in the NFL draft if he declares: his rank at the position, mapped to where that many QBs/RBs/WRs/TEs have gone in the last 8 drafts', cell: x => `<td class="n">${projCell(x.p)}</td>` },
+        ...preCols(),
       ] : [
         { label: 'NFL draft', n: true, cell: x => `<td class="n">${x.p.draft ? `${x.p.draft.r}.${String(x.p.draft.p).padStart(2, '0')} <span class="muted small">${esc(x.p.draft.team)}</span>` : '—'}</td>` },
       ]),
@@ -164,6 +176,7 @@ export async function render(root, params, query) {
           { key: 'yr', label: 'Year', title: 'College season this fall, counted from high school', sort: p => p.yr, cell: p => `<td>${p.yr ? ordinal(p.yr) : '—'}</td>` },
           { key: 'elig', label: 'Eligible', n: true, title: 'First NFL draft he can enter (three years out of high school)', sort: p => p.elig, cell: p => `<td class="n">${eligCell(p, st.cls)}</td>` },
           { key: 'proj', label: 'Proj. pick', n: true, title: 'Projected NFL draft slot if he declares (model)', sort: p => p.proj?.pick ?? 999, cell: p => `<td class="n">${projCell(p)}</td>` },
+          ...preCols(true),
         ]),
       ...(hasAdp ? [{ key: 'adp', label: 'ADP', n: true, title: 'Sleeper ADP from real drafts: rookie-draft ADP when available, otherwise dynasty startup ADP for this QB format', sort: p => adpOf(p), cell: p => `<td class="n">${adpOf(p) != null ? fmt1(adpOf(p)) : '—'}${p.adp?.rookie == null && adpOf(p) != null ? ' <span class="muted small">startup</span>' : ''}</td>` }] : []),
       ...(hasEcr ? [{ key: 'ecr', label: 'Experts', n: true, title: 'FantasyPros dynasty rookie rankings (expert consensus rank)', sort: p => p.ecr?.rank, cell: p => `<td class="n" title="${p.ecr ? `Best ${p.ecr.best}, worst ${p.ecr.worst} · ${p.ecr.date}` : ''}">${p.ecr ? fmt1(p.ecr.rank) : '—'}</td>` }] : []),
@@ -220,7 +233,7 @@ export async function render(root, params, query) {
 
   el.addEventListener('click', e => {
     const th = e.target.closest('th[data-sort]');
-    if (th) { const k = th.dataset.sort; st.dir = st.sort === k ? (st.dir === 'asc' ? 'desc' : 'asc') : ['mock', 'name', 'pos', 'school', 'yr', 'elig', 'proj', 'age', 'forty', 'draft', 'adp', 'ecr'].includes(k) ? 'asc' : 'desc'; st.sort = k; draw(); return; }
+    if (th) { const k = th.dataset.sort; st.dir = st.sort === k ? (st.dir === 'asc' ? 'desc' : 'asc') : ['mock', 'name', 'pos', 'school', 'yr', 'elig', 'proj', 'xecr', 'age', 'forty', 'draft', 'adp', 'ecr'].includes(k) ? 'asc' : 'desc'; st.sort = k; draw(); return; }
     const act = e.target.closest('[data-act]');
     if (act) {
       const a = act.dataset.act;

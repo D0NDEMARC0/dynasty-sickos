@@ -21,10 +21,10 @@ export const MODEL = {
 
 // Extra metrics shown as percentile bars on player pages (not all are in the score).
 export const DISPLAY = {
-  WR: ['xfp', 'fpoe', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade', 'x_winRate'],
-  TE: ['xfp', 'fpoe', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade'],
-  RB: ['xfp', 'fpoe', 'ppg', 'osh', 'csh', 'tsh', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
-  QB: ['xfp', 'fpoe', 'ppg', 'epadb', 'cpoe', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
+  WR: ['xfp', 'fpoe', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'frs', 'fr1', 'aysh', 'wopr', 'adot', 'sep', 'cush', 'yacoe', 'catch', 'drop', 'contc', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade', 'x_winRate'],
+  TE: ['xfp', 'fpoe', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'tsh', 'frs', 'fr1', 'aysh', 'wopr', 'adot', 'sep', 'yacoe', 'catch', 'drop', 'epat', 'fdrr', 'rp', 'btr', 'ppg', 'x_grade', 'x_routeGrade'],
+  RB: ['xfp', 'fpoe', 'ppg', 'osh', 'csh', 'tsh', 'frs', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
+  QB: ['xfp', 'fpoe', 'ppg', 'epadb', 'cpoe', 'fread', 'chkr', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
 };
 const LOWER_BETTER = new Set(['drop', 'stuff', 'skr', 'twp', 'press', 'bad']);
 

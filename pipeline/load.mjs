@@ -82,7 +82,7 @@ export async function ftn(season, current) {
   const p = await nflverse('ftn_charting', `ftn_charting_${season}.parquet`, ttl(season, current));
   if (!p) return null;
   const rows = await readParquet(p, ['nflverse_game_id', 'nflverse_play_id', 'is_play_action', 'is_screen_pass', 'is_qb_out_of_pocket',
-    'is_interception_worthy', 'is_catchable_ball', 'is_contested_ball', 'is_created_reception', 'is_drop', 'is_throw_away']);
+    'is_interception_worthy', 'is_catchable_ball', 'is_contested_ball', 'is_created_reception', 'is_drop', 'is_throw_away', 'read_thrown']);
   const m = new Map();
   for (const r of rows) m.set(`${r.nflverse_game_id}|${r.nflverse_play_id}`, r);
   return m;
