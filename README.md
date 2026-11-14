@@ -42,6 +42,11 @@ prevent that. If it ever pauses, re-enable it from the Actions tab.
 
 To preview the website build locally: `node pipeline/build.mjs --public && node pipeline/site.mjs && node pipeline/preview-site.mjs`.
 
+GitHub Pages lets browsers cache files for 10 minutes, so every deploy gets its own id: the page, the stylesheet,
+every script import and every data request carry `?v=<id>`, and `data/site.json` (never cached) names the current
+deploy. A cached page or a tab left open across a deploy reloads into the new one instead of mixing old code with
+new data.
+
 ## Pages
 
 - **Rankings** – dynasty value per player: market value (FantasyCalc trade values), Analytics Score, age window,

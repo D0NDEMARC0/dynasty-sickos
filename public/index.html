@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/app.css" id="app-css">
 </head>
 <body>
   <header class="top">
@@ -37,6 +37,26 @@
   <div id="banner" class="banner" role="status" hidden></div>
   <main id="app"><div class="empty"><span class="spinner"></span> Loading data…</div></main>
   <div id="tip" role="tooltip"></div>
-  <script type="module" src="js/main.js"></script>
+  <script type="module">
+    // Starts the app. On the website every deploy has an id: pipeline/site.mjs stamps it on this page, the stylesheet
+    // and every script and data URL, and data/site.json (never cached) names the current one. If it names a newer
+    // deploy than this page, this page is a cached copy: reload once to get the new one. So a browser never runs one
+    // deploy's code against another deploy's data. On your computer there's no id and nothing is cached.
+    const built = document.documentElement.dataset.deploy || null;
+    let v = built;
+    if (built) {
+      try { const r = await fetch('data/site.json', { cache: 'no-store' }); if (r.ok) v = (await r.json()).v || built; } catch { /* offline: this page's own deploy */ }
+    }
+    let reload = false;
+    if (v !== built) { try { reload = sessionStorage.getItem('dl.deploy') !== v; if (reload) sessionStorage.setItem('dl.deploy', v); } catch { /* no storage: never risk a reload loop */ } }
+    if (reload) location.reload();
+    else {
+      if (v !== built) document.getElementById('app-css').href = `css/app.css?v=${v}`;
+      import(v ? `./js/main.js?v=${v}` : './js/main.js').catch(e => {
+        console.error(e);
+        document.getElementById('app').innerHTML = '<div class="empty">Couldn’t load the app. Check your connection and refresh.</div>';
+      });
+    }
+  </script>
 </body>
 </html>

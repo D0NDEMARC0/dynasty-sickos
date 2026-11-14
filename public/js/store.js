@@ -1,5 +1,6 @@
 // App state, data loading, and derived player rows (market + model values).
 import { labValue, fundamentals, ageOf, ageScore, pointsFromBox, PRESETS } from './model.js';
+import { fetchData } from './version.js';
 
 const LS = 'dynastylab.v1';
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
@@ -39,7 +40,7 @@ export async function detectMode() {
 }
 
 export async function loadData() {
-  const r = await fetch('data/players.json', { cache: 'no-store' });
+  const r = await fetchData('data/players.json');
   if (!r.ok) throw new Error('Data not built yet');
   S.data = await r.json();
   S.meta = S.data.meta;
@@ -59,7 +60,7 @@ export async function loadValues() {
   }
   const key = `${qb}|${ppr}|${teams}`;
   if (S.valuesKey === key && S.values) return;
-  const r = await fetch(S.mode === 'static' ? `data/values/${qb}_${ppr}_${teams}.json` : `api/values?qb=${qb}&ppr=${ppr}&teams=${teams}`);
+  const r = await fetchData(S.mode === 'static' ? `data/values/${qb}_${ppr}_${teams}.json` : `api/values?qb=${qb}&ppr=${ppr}&teams=${teams}`);
   if (!r.ok) throw new Error('Could not load market values');
   S.values = await r.json();
   S.valuesKey = key;
@@ -68,7 +69,7 @@ export async function loadValues() {
 
 export async function loadLogs(season) {
   if (!S.logs[season]) {
-    const r = await fetch(`data/logs_${season}.json`);
+    const r = await fetchData(`data/logs_${season}.json`);
     S.logs[season] = r.ok ? await r.json() : {};
   }
   return S.logs[season];

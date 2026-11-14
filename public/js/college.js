@@ -1,4 +1,5 @@
 // College football metric dictionary + data loaders for the Prospects and College pages.
+import { fetchData } from './version.js';
 const pct = v => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 const d1 = v => (v == null ? '—' : v.toFixed(1));
 const d2 = v => (v == null ? '—' : v.toFixed(2));
@@ -91,7 +92,7 @@ export const COUNT_STATS = new Set(['g', 'tgt', 'rec', 'reyd', 'retd', 'car', 'r
 const cache = { prospects: null, seasons: {} };
 export async function loadProspects() {
   if (!cache.prospects) {
-    const r = await fetch('data/prospects.json');
+    const r = await fetchData('data/prospects.json');
     if (!r.ok) throw new Error('College data hasn’t been built yet — refresh the data.');
     cache.prospects = await r.json();
     cache.byCid = new Map(cache.prospects.prospects.filter(p => p.cid).map(p => [p.cid, p]));
@@ -101,7 +102,7 @@ export async function loadProspects() {
 export const prospectByCid = cid => cache.byCid?.get(String(cid)) || null;
 export async function loadCollegeSeason(season) {
   if (!cache.seasons[season]) {
-    const r = await fetch(`data/college_${season}.json`);
+    const r = await fetchData(`data/college_${season}.json`);
     cache.seasons[season] = r.ok ? await r.json() : { season, players: [] };
   }
   return cache.seasons[season];
@@ -111,7 +112,7 @@ export async function loadCareer(cid) {
   cid = String(cid);
   const b = cid.slice(-2).padStart(2, '0');
   if (!cache.careers?.[b]) {
-    (cache.careers ||= {})[b] = await fetch(`data/college/c_${b}.json`).then(r => (r.ok ? r.json() : {})).catch(() => ({}));
+    (cache.careers ||= {})[b] = await fetchData(`data/college/c_${b}.json`).then(r => (r.ok ? r.json() : {})).catch(() => ({}));
   }
   const c = cache.careers[b][cid];
   return c ? { s: [...c.s].sort((x, y) => x.season - y.season), bk: c.bk, rc: c.rc, best: c.best, el: c.el || null } : { s: [], bk: null, rc: null, best: null, el: null };
@@ -122,7 +123,7 @@ export async function loadCareer(cid) {
  */
 export async function loadPahowdy() {
   if (cache.pahowdy === undefined) {
-    const d = await fetch('data/pahowdy.json').then(r => (r.ok ? r.json() : null)).catch(() => null);
+    const d = await fetchData('data/pahowdy.json').then(r => (r.ok ? r.json() : null)).catch(() => null);
     if (d) {
       d.byCid = new Map(); d.bySid = new Map();
       for (const r of d.players) { if (r.cid) d.byCid.set(String(r.cid), r); if (r.sid) d.bySid.set(String(r.sid), r); }

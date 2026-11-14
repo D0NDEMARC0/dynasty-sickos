@@ -1,11 +1,12 @@
 // Matchups: fantasy points allowed by each defense, run/pass funnels, coverage tendencies and offensive lines.
 import { S, pprParam } from '../store.js';
+import { fetchData } from '../version.js';
 import { esc, heat, table, sortRows } from '../ui.js';
 import { mount } from './common.js';
 
 const st = { view: 'def', sort: { def: 'WR', ol: 'sackRate' }, dir: { def: 'desc', ol: 'asc' } };
 let cache;
-const load = async () => (cache !== undefined ? cache : (cache = await fetch('data/teams.json').then(r => (r.ok ? r.json() : null)).catch(() => null)));
+const load = async () => (cache !== undefined ? cache : (cache = await fetchData('data/teams.json').then(r => (r.ok ? r.json() : null)).catch(() => null)));
 const POS = ['QB', 'RB', 'WR', 'TE'];
 const pct1 = v => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 const sgn2 = v => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}`);
