@@ -53,7 +53,8 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
   defenses, man/zone coverage rates, and offensive lines (sack, hit and pressure rates, RB yards before contact).
 - **Player pages** – percentile bars, weekly fantasy points, season history, game log, and college career.
 - **Prospects** – **devy boards** for the two classes after next, and a **big board** for the next draft class (every FBS QB/RB/WR/TE who's draft-eligible, tiered by
-  rookie-draft round, with a projected NFL pick from a draft-capital model trained on recent drafts, an
+  rookie-draft round and led by the **online NFL mock-draft consensus** (Pro Football Network's free Mock Draft Index,
+  linked), with a projected NFL pick that blends those mocks with a draft-capital model trained on recent drafts, an
   "expert-style" rank learned from how FantasyPros experts ranked past classes before the draft, and a "Buzz"
   attention score from Wikipedia page views), plus the
   Prospect Score for the last four rookie classes: college production, breakout age, combine athleticism, recruiting,

@@ -9,6 +9,7 @@ import { nameKey } from './imports.mjs';
 import { fitDraftModel, ridge, spearman } from './draftmodel.mjs';
 import { loadPahowdy, slimPahowdy, PAHOWDY } from './pahowdy.mjs';
 import { wikiPlayers, recentViews, historyViews, avgViews, findArticles } from './wiki.mjs';
+import { mockConsensus, MOCK_INDEX_URL } from './mocks.mjs';
 import { fileURLToPath } from 'node:url';
 
 // pre-draft Wikipedia pageviews of past classes (CC0 Wikimedia data), committed so builds don't re-fetch history
@@ -593,6 +594,11 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
 
   // ---- assemble classes
   const upcoming = current + 1;
+  // online mock-draft consensus for the next class (Pro Football Network's Mock Draft Index): anyone it lists is on
+  // the board, and its order is one of the board's signals
+  const mocks = await mockConsensus(upcoming, log);
+  const mockKey = (name, pos) => `${nameKey(name)}|${posOf(pos)}`;
+  const mockBy = new Map(mocks.filter(r => SKILL.has(posOf(r.pos))).map(r => [mockKey(r.name, r.pos), r]));
   const classes = {};
   const prospects = [];
   const add = (cls, p) => { (classes[cls] ||= { status: p.status, count: 0 }).count++; prospects.push({ ...p, draftClass: cls }); };
@@ -618,7 +624,7 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
         const cur = bySeason[current] || bySeason[current - 1];
         for (const s of cur ? cur.players.values() : []) {
           const prev = bySeason[current - 1]?.players.get(s.cid);
-          if (!(eligByCid.get(s.cid)?.year <= y) || s.div !== 'fbs' || !(s.q || prev?.q)) continue;
+          if (!(eligByCid.get(s.cid)?.year <= y) || s.div !== 'fbs' || !(s.q || prev?.q || mockBy.has(mockKey(s.name, s.pos)))) continue;
           add(y, { status: 'watch', cid: s.cid, name: s.name, pos: s.pos, school: s.team });
         }
       }
@@ -662,17 +668,50 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
       }
     }
   }
+  // the next class: which players the online mocks list, and where
+  let mockMatched = 0;
+  for (const p of prospects) {
+    if (p.draftClass !== upcoming || p.draft) continue;
+    const r = mockBy.get(mockKey(p.name, p.pos));
+    if (r) { p.mock = { rank: r.rank }; mockMatched++; }
+  }
+  if (mocks.length) log(`  online mock consensus: ${mockMatched} of ${mockBy.size} listed QB/RB/WR/TE matched to the ${upcoming} board`);
   // projected NFL draft slot "if he declares": the k-th best QB/RB/WR/TE by the model takes the k-th slot at the position
   // (each class separately: the 2027 board, then the 2028 and 2029 devy boards)
+  // The top few at each position keep their scarcity slot; deeper players blend that slot with the pick their own
+  // expected draft value implies, so there's no cliff from "QB11 = pick 207" to "QB12 = undrafted" when the model
+  // still expects real draft capital (not every eligible underclassman declares, so the k-th eligible QB isn't
+  // the k-th QB taken).
+  const LAST_PICK = 257, UNDRAFTED = 262;
+  const evPick = ev => (ev > 0 ? Math.min(UNDRAFTED, 1 - 45 * Math.log(ev / 100)) : UNDRAFTED);
   const preDraft = prospects.filter(p => !p.draft && p.ev != null);
   for (const cls of new Set(preDraft.map(p => p.draftClass))) {
     const inClass = preDraft.filter(p => p.draftClass === cls);
     for (const pos of SKILL) {
       const slots = posSlots[pos] || [];
       inClass.filter(p => p.pos === pos).sort((a, b) => b.ev - a.ev).forEach((p, k) => {
-        const pick = k < slots.length ? Math.round(slots[k]) : null;
+        const slot = k < slots.length ? slots[k] : UNDRAFTED;
+        const w = Math.max(0, Math.min(1, (k - 2) / 8)) * 0.5; // 0 for the top 3 at the position, up to 50/50 from the 11th
+        const est = Math.round(Math.exp((1 - w) * Math.log(slot) + w * Math.log(evPick(p.ev))));
+        const pick = est <= LAST_PICK ? est : null;
         p.proj = { pick, round: pick ? Math.min(7, Math.ceil(pick / 32)) : null, posRank: k + 1, ev: rd(p.ev, 1) };
       });
+    }
+    // "Real NFL draft position": where the online mocks put him. A player they list is projected two-thirds from his
+    // mock rank and one-third from the model; one they leave out of their top 40 is pushed past it (the model's
+    // pick 20 becomes 50, its pick 60 becomes 70; from pick 80 on, unchanged).
+    if (cls === upcoming && mocks.length) {
+      const N = mocks.length;
+      for (const p of inClass) {
+        const model = p.proj.pick;
+        const est = p.mock ? Math.round(Math.exp((2 * Math.log(p.mock.rank) + Math.log(model ?? UNDRAFTED)) / 3))
+          : model != null ? Math.round(Math.max(model, N + model / 2)) : null;
+        const pick = est != null && est <= LAST_PICK ? est : null;
+        p.proj = { ...p.proj, pick, round: pick ? Math.min(7, Math.ceil(pick / 32)) : null, model };
+      }
+      for (const pos of SKILL) {
+        inClass.filter(p => p.pos === pos).sort((a, b) => (a.proj.pick ?? 999) - (b.proj.pick ?? 999) || b.ev - a.ev).forEach((p, k) => { p.proj.posRank = k + 1; });
+      }
     }
     inClass.sort((a, b) => (a.proj.pick ?? 999) - (b.proj.pick ?? 999) || b.ev - a.ev).forEach((p, i) => { p.proj.rank = i + 1; });
   }
@@ -718,7 +757,7 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
   for (const [cls, c] of Object.entries(classes)) {
     if (c.status !== 'watch' && c.status !== 'devy') continue;
     const list = prospects.filter(p => p.draftClass === Number(cls)).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-    for (const p of list.slice(c.status === 'watch' ? 300 : 250)) if (!p.proj?.pick && !(p.recruit?.stars >= 4) && !(p.xecr <= 120)) dropped.add(p);
+    for (const p of list.slice(c.status === 'watch' ? 300 : 250)) if (!(p.proj?.pick <= 128) && !(p.recruit?.stars >= 4) && !(p.xecr <= 100) && !p.mock) dropped.add(p);
   }
   for (let i = prospects.length - 1; i >= 0; i--) if (dropped.has(prospects[i])) prospects.splice(i, 1);
   for (const [cls, c] of Object.entries(classes)) if (c.status === 'watch' || c.status === 'devy') c.count = prospects.filter(p => p.draftClass === Number(cls)).length;
@@ -749,6 +788,7 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
     current, upcoming, collegeSeasons: Object.keys(bySeason).map(Number), leaderboardSeasons: latestSeasons,
     classes: Object.fromEntries(Object.entries(classes).sort((a, b) => b[0] - a[0])), weights: PROSPECT_WEIGHTS, production: PROD, breakout: BREAKOUT,
     eligibility: { yearsOutOfHighSchool: YEARS_OUT_OF_HS },
+    mockConsensus: mocks.length ? { source: 'Pro Football Network Mock Draft Index', url: MOCK_INDEX_URL(upcoming), size: mocks.length, matched: mockMatched, year: upcoming } : null,
     expertModel: em ? { ...em.test, snapshots: Object.fromEntries(Object.entries(ecrSnaps).map(([y, s]) => [y, s.date])) } : null,
     draftModel: {
       features: DRAFT_FEATURES, test: dm.test, players: trainRows.length, drafted: trainRows.filter(r => r.y > 0).length,

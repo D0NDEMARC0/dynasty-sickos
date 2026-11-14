@@ -87,6 +87,16 @@ function profileTiles(pos, bk, rc, bestDom, career, el, elig) {
   </div>`;
 }
 
+// where the projected pick comes from: online mocks (when they list him) blended with the draft model
+function projNote(p) {
+  const pr = p.proj, model = pr.model === undefined ? pr.pick : pr.model;
+  const m = model ? `model #${model}` : 'model: undrafted';
+  if (p.mock) return `online mocks #${p.mock.rank} (2/3) + ${m} (1/3), if he declares`;
+  if (pr.model !== undefined) return `not in the online mocks’ top 40 · ${m}, if he declares`;
+  return pr.pick ? `${p.pos}${pr.posRank} of the class by the draft model, if he declares`
+    : `${p.pos}${pr.posRank} of the class by the draft model: past the number of ${p.pos}s usually drafted (stats only; it can’t see tape)`;
+}
+
 function prospectTiles(p, row) {
   const c = p.comps || {};
   return `<div class="tiles">
@@ -95,9 +105,7 @@ function prospectTiles(p, row) {
     ${p.pos !== 'QB' ? tile('Breakout score', c.brk, 'earlier breakout = higher') : ''}
     ${tile('Athleticism', c.ath, p.combine ? 'combine percentile' : 'no combine data yet')}
     ${p.draft ? tile('Draft capital', c.dc, `pick ${p.draft.p}`)
-      : p.proj ? tile('Projected NFL pick', p.proj.pick ? `R${p.proj.round} · #${p.proj.pick}` : 'UDFA', p.proj.pick
-        ? `${p.pos}${p.proj.posRank} of the class by the draft model, if he declares`
-        : `${p.pos}${p.proj.posRank} of the class by the draft model: past the number of ${p.pos}s usually drafted (stats only; it can’t see tape)`)
+      : p.proj ? tile('Projected NFL pick', p.proj.pick ? `R${p.proj.round} · #${p.proj.pick}` : 'UDFA', projNote(p))
         : tile('Recruiting score', c.rec, '')}
     ${row?.market ? tile('Dynasty value', fmtInt(row.market), `market rank #${row.mktRank}`) : ''}
   </div>`;

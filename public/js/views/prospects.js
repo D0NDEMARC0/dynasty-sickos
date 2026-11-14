@@ -11,6 +11,7 @@ const st = { cls: null, view: null, pos: 'ALL', q: '', sort: 'mock', dir: 'asc',
 const VIEWS = ['board', 'rankings', 'mock'];
 // other public boards, for comparison (links only — their content isn't copied into this app)
 const OTHER_BOARDS = [
+  ['PFN mock draft index', cls => `https://www.profootballnetwork.com/nfl-draft-hq/mock-draft-index?year=${cls}`],
   ['FantasyPros devy consensus (free)', 'https://www.fantasypros.com/2026/01/devy-fantasy-football-rankings-2026'],
   ['KeepTradeCut devy', 'https://keeptradecut.com/devy-rankings'],
   ['Footballguys devy', 'https://www.footballguys.com/rankings/duration/devy'],
@@ -20,7 +21,11 @@ const OTHER_BOARDS = [
 ];
 
 const eligCell = (p, cls) => (p.elig == null ? '—' : p.elig < cls ? `${p.elig} <span class="muted small">returned</span>` : String(p.elig));
-const projCell = p => (!p.proj ? '—' : p.proj.pick ? `R${p.proj.round} · #${p.proj.pick}` : '<span class="muted">UDFA</span>');
+const projCell = p => {
+  if (!p.proj) return '—';
+  const tip = p.proj.model === undefined ? '' : ` title="${p.mock ? `Online mocks #${p.mock.rank} (2/3) + model` : 'Not in the online mocks’ top 40 · model'} ${p.proj.model ? `#${p.proj.model}` : 'undrafted'} (1/3)"`;
+  return p.proj.pick ? `<span${tip}>R${p.proj.round} · #${p.proj.pick}</span>` : `<span class="muted"${tip}>UDFA</span>`;
+};
 const ageCell = p => (p.age != null ? `${p.ageEst ? '~' : ''}${fmt1(p.age)}` : '—');
 const brkNote = p => (p.brk?.cls ? ` <span class="muted small">${p.brk.age ? `${p.brk.est ? '~' : ''}${fmt1(p.brk.age)}` : esc(p.brk.cls)}</span>` : '');
 
@@ -52,13 +57,15 @@ export async function render(root, params, query) {
     ? [{ key: 'ph', label: 'Pahowdy', n: true, title: 'Pahowdy’s pre-draft score from his prospect database (shading = percentile vs. his prospects at the position since 2001). Only shown on your computer.', sort: p => phOf(p)?.pre, cell: p => { const r = phOf(p); return `<td class="n heat" style="${heat(r?.prePct)}">${r?.pre != null ? fmt1(r.pre) : '—'}</td>`; } }]
     : [];
 
+  const mc = meta.mockConsensus?.year === st.cls ? meta.mockConsensus : null;
   const note = () => {
     const basis = `<b>Order</b> blends ${used.join(', ')}.`;
     if (status === 'watch') {
       return `<b>${st.cls} big board.</b> Every FBS QB, RB, WR and TE who can enter the ${st.cls} draft (three years out of high school: true juniors, redshirt sophomores, and players who returned to school), ranked for ${sf ? 'superflex' : '1QB'}. ${basis} `
+        + (mc ? `<b>Mocks</b> = his overall rank in the online NFL mock-draft consensus (<a class="link" href="${esc(mc.url)}" target="_blank" rel="noopener">${esc(mc.source)}</a>, which aggregates dozens of public mocks; top ${mc.size} at all positions), the biggest single input. ` : '')
         + '<b>Expert-style</b> = where FantasyPros experts would likely rank him, learned from how they ranked past classes before the draft; '
         + '<b>Buzz</b> = his Wikipedia page views vs. the class, the hype and draft buzz stats can’t see. '
-        + `The Prospect Score adds <b>projected NFL draft capital</b> from a model trained on the ${drafts.length ? `${drafts[0]}–${drafts[drafts.length - 1]}` : 'recent'} drafts. Paste boards you trust below to blend them in. `
+        + `The Prospect Score adds <b>projected NFL draft capital</b> (the online mocks blended with a model trained on the ${drafts.length ? `${drafts[0]}–${drafts[drafts.length - 1]}` : 'recent'} drafts). Paste boards you trust below to blend them in. `
         + 'Real FantasyPros ranks and Sleeper ADP replace the projections automatically once they’re published; in March this becomes the combine class, and after the NFL Draft the drafted class.';
     }
     if (status === 'devy') {
@@ -94,6 +101,9 @@ export async function render(root, params, query) {
   const hasAdp = classList.some(p => adpOf(p) != null), hasEcr = classList.some(p => p.ecr);
   // pre-draft signals: expert-style projected rank and public attention (Wikipedia pageviews)
   const preCols = (sortable = false) => [
+    ...(classList.some(p => p.mock) ? [{ key: 'mock2', label: 'Mocks', n: true, sort: sortable ? p => p.mock?.rank ?? 99 : undefined,
+      title: 'Overall rank in the online NFL mock-draft consensus (Pro Football Network’s Mock Draft Index, which aggregates dozens of public mocks; it lists the top 40 at all positions)',
+      cell: x => { const p = x.p || x; return `<td class="n">${p.mock ? `#${p.mock.rank}` : '<span class="muted">—</span>'}</td>`; } }] : []),
     ...(classList.some(p => p.xecr) ? [{ key: 'xecr', label: 'Expert-style', n: true, sort: sortable ? p => p.xecr : undefined,
       title: 'Where FantasyPros experts would likely rank him (1QB), from how they ranked past prospects with a similar profile before the draft. Replaced by the real expert ranking once FantasyPros ranks this class',
       cell: x => { const p = x.p || x; return `<td class="n">${p.ecr ? '<span class="muted">—</span>' : p.xecr ?? '—'}</td>`; } }] : []),
@@ -111,7 +121,7 @@ export async function render(root, params, query) {
       <div class="bhead">
         <div>
           <h2 style="margin:0">Your boards</h2>
-          <p class="muted small" style="margin:4px 0 0">Paste a ranking or an NFL mock draft from any site you read (Footballguys, Draft Sharks, KeepTradeCut, a r/DynastyFF post, any 2027 mock). It counts for half of the order above and gets its own column; paste two or three mocks and the board follows their consensus. It’s saved only in this browser. Quickest real consensus: FantasyPros publishes a free devy ranking (link below). Select the list, copy, and paste it here.</p>
+          <p class="muted small" style="margin:4px 0 0">Paste a ranking or an NFL mock draft from any site you read (Footballguys, Draft Sharks, KeepTradeCut, a r/DynastyFF post, any 2027 mock). It counts as much as the online mock consensus and gets its own column; paste two or three and the board follows their consensus. It’s saved only in this browser. Quickest real consensus: FantasyPros publishes a free devy ranking (link below). Select the list, copy, and paste it here.</p>
         </div>
         ${st.adding ? '' : '<button class="btn" data-act="addboard">+ Paste a board or mock</button>'}
       </div>
@@ -123,7 +133,7 @@ export async function render(root, params, query) {
       ${st.msg ? `<p class="small" style="margin:8px 0 0">${st.msg}</p>` : ''}
       ${boards.length ? `<ul class="blist">${boards.map(b => `<li><b>${esc(b.name)}</b> <span class="muted small">${b.matched} matched · added ${esc(b.date)}</span> <button class="linkbtn" data-act="rmboard" data-id="${esc(b.id)}">Remove</button>
         ${b.unmatched.length ? `<details class="small"><summary>${b.unmatched.length} line${b.unmatched.length === 1 ? '' : 's'} not matched to a ${st.cls} prospect</summary><div class="muted">${b.unmatched.slice(0, 40).map(esc).join('<br>')}</div></details>` : ''}</li>`).join('')}</ul>` : ''}
-      <p class="muted small" style="margin:10px 0 0">Compare: ${OTHER_BOARDS.map(([n, u]) => `<a class="link" href="${u}" target="_blank" rel="noopener">${n}</a>`).join(' · ')}</p>
+      <p class="muted small" style="margin:10px 0 0">Compare: ${OTHER_BOARDS.map(([n, u]) => `<a class="link" href="${typeof u === 'function' ? u(st.cls) : u}" target="_blank" rel="noopener">${n}</a>`).join(' · ')}</p>
     </div>`;
 
   const drawBoard = () => {
@@ -137,7 +147,7 @@ export async function render(root, params, query) {
       ...(pre ? [
         { label: 'Year', title: 'College season this fall, counted from high school (3rd = true junior or redshirt sophomore)', cell: x => `<td>${x.p.yr ? ordinal(x.p.yr) : '—'}</td>` },
         { label: 'Eligible', title: `First NFL draft he can enter (three years out of high school). “Returned” = he could have entered an earlier draft and went back to school`, cell: x => `<td>${eligCell(x.p, st.cls)}</td>` },
-        { label: 'Proj. NFL pick', n: true, title: 'Where the model projects him in the NFL draft if he declares: his rank at the position, mapped to where that many QBs/RBs/WRs/TEs have gone in the last 8 drafts', cell: x => `<td class="n">${projCell(x.p)}</td>` },
+        { label: 'Proj. NFL pick', n: true, title: 'Where he’d go in the NFL draft if he declares. For players the online mocks list: two-thirds their mock rank, one-third our draft model. Otherwise the model (his rank at the position, mapped to where that many QBs/RBs/WRs/TEs have gone in the last 8 drafts), placed after the mocks’ top 40. Hover a pick for the parts', cell: x => `<td class="n">${projCell(x.p)}</td>` },
         ...preCols(),
       ] : [
         { label: 'NFL draft', n: true, cell: x => `<td class="n">${x.p.draft ? `${x.p.draft.r}.${String(x.p.draft.p).padStart(2, '0')} <span class="muted small">${esc(x.p.draft.team)}</span>` : '—'}</td>` },
@@ -237,7 +247,7 @@ export async function render(root, params, query) {
 
   el.addEventListener('click', e => {
     const th = e.target.closest('th[data-sort]');
-    if (th) { const k = th.dataset.sort; st.dir = st.sort === k ? (st.dir === 'asc' ? 'desc' : 'asc') : ['mock', 'name', 'pos', 'school', 'yr', 'elig', 'proj', 'xecr', 'age', 'forty', 'draft', 'adp', 'ecr'].includes(k) ? 'asc' : 'desc'; st.sort = k; draw(); return; }
+    if (th) { const k = th.dataset.sort; st.dir = st.sort === k ? (st.dir === 'asc' ? 'desc' : 'asc') : ['mock', 'name', 'pos', 'school', 'yr', 'elig', 'proj', 'xecr', 'mock2', 'age', 'forty', 'draft', 'adp', 'ecr'].includes(k) ? 'asc' : 'desc'; st.sort = k; draw(); return; }
     const act = e.target.closest('[data-act]');
     if (act) {
       const a = act.dataset.act;
