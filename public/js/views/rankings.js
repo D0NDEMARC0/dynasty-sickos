@@ -1,7 +1,7 @@
 // Dynasty player rankings: the trade market (FantasyCalc) by default, plus the analytics + age model's Lab value
 // and Buy/Sell signals.
 import { S, rows, persist, bump, scoringLabel } from '../store.js';
-import { esc, fmtInt, fmt1, posTag, signalTag, minibar, table, sortRows, signed } from '../ui.js';
+import { esc, fmtInt, fmt1, posTag, signalTag, minibar, table, sortRows, signed, nameMatch } from '../ui.js';
 import { playerCell, anCell, trendCell, isRookie, seasonTag, mount } from './common.js';
 
 const st = { pos: 'ALL', q: '', rookies: false, signal: 'all', sort: 'market', dir: 'desc', limit: 150, model: false };
@@ -51,7 +51,7 @@ export function render(root, params, query) {
     let list = all.filter(r => (st.pos === 'ALL' || r.p.pos === st.pos)
       && (!st.rookies || isRookie(r.p))
       && (st.signal === 'all' || r.signal === st.signal)
-      && (!q || r.p.name.toLowerCase().includes(q) || (r.p.team || '').toLowerCase() === q));
+      && (!q || nameMatch(r.p.name, q) || (r.p.team || '').toLowerCase() === q));
     const cols = [
       { key: 'rank', label: '#', n: true, title: 'Position in the current sort (default: market value)', sort: r => r.mktRank, cell: (r, i) => `<td class="rank">${i + 1}</td>` },
       { key: 'name', label: 'Player', sort: r => r.p.name, cell: r => `<td>${playerCell(r.p)}</td>` },

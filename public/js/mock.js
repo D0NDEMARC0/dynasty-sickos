@@ -63,10 +63,11 @@ export function consensus(list, { sf, history = [], boards = [] }) {
     return slot;
   };
   const scoreSlot = onCurve(p => (p.score == null ? null : -p.score));
-  // Online NFL mock-draft consensus (Pro Football Network's Mock Draft Index: the top 40 at all positions, from
-  // dozens of public mocks). Its order among QB/RB/WR/TE goes on the positional curve, so in 1QB the 9th QB it lists
-  // isn't a top-10 rookie pick. Players it doesn't list come after everyone it does.
-  const mocked = list.filter(p => p.mock && !p.draft).sort((a, b) => a.mock.rank - b.mock.rank);
+  // Online NFL mock-draft consensus (Pro Football Network's Mock Draft Index: the latest mocks' first round, weighted
+  // 3:1 over the season-long top 40; p.mock.est is the NFL pick that implies). Its order among QB/RB/WR/TE goes on the
+  // positional curve, so in 1QB the 9th QB it lists isn't a top-10 rookie pick. Players it doesn't list come after
+  // everyone it does.
+  const mocked = list.filter(p => p.mock && !p.draft).sort((a, b) => (a.mock.est ?? a.mock.rank) - (b.mock.est ?? b.mock.rank));
   const mockSlots = new Map();
   if (mocked.length) {
     const k = {};

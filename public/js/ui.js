@@ -8,6 +8,28 @@ export const fmt1 = v => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(1
 export const fmtPct = (v, d = 0) => (v == null || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(d)}%`);
 export const signed = (v, d = 0, suffix = '') => (v == null || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}${suffix}`);
 
+// Name search that forgives a letter: "jaden baugh" finds Jadan Baugh, "mestamaker" finds Mestemaker. Each word you
+// type has to start a word of the name; words of 4+ letters may have one wrong, missing or extra letter.
+// Accents are dropped; apostrophes either vanish or split the word (Ja'Marr = jamarr or ja marr); other punctuation
+// splits words.
+const normName = (s, apos = '') => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/['’]/g, apos).replace(/[^a-z0-9]+/g, ' ').trim();
+const oneOff = (a, b) => {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, d = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++d > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return d + (a.length - i) + (b.length - j) <= 1;
+};
+export function nameMatch(name, q) {
+  const n = normName(name), n2 = normName(name, ' '), qq = normName(q);
+  if (!qq || n.includes(qq) || n2.includes(qq)) return true;
+  const words = [...new Set([...n.split(' '), ...n2.split(' ')])];
+  return qq.split(' ').every(t => words.some(w => w.startsWith(t) || (t.length >= 4 && (oneOff(t, w.slice(0, t.length)) || oneOff(t, w)))));
+}
+
 export const posTag = pos => (pos ? `<span class="pos" data-pos="${esc(pos)}">${esc(pos)}</span>` : '');
 
 export function injTag(inj) {

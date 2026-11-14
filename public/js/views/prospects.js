@@ -1,10 +1,10 @@
 // Rookie & prospect classes: big board (plus boards you paste), Prospect Score, consensus rankings, ADP and mock drafts.
 import { S, rows } from '../store.js';
-import { loadProspects, loadPahowdy, collegeHeadshot, stars } from '../college.js';
+import { loadProspects, loadPahowdy, collegeHeadshot, stars, mockText } from '../college.js';
 import { consensus, genericSlots, leagueSlots, runMock } from '../mock.js';
 import { userBoards, addBoard, removeBoard } from '../boards.js';
 import { ordinal } from '../model.js';
-import { esc, fmtInt, fmt1, heat, posTag, table, sortRows } from '../ui.js';
+import { esc, fmtInt, fmt1, heat, posTag, table, sortRows, nameMatch } from '../ui.js';
 import { mount } from './common.js';
 
 const st = { cls: null, view: null, pos: 'ALL', q: '', sort: 'mock', dir: 'asc', limit: 150, rounds: 4, mockSrc: 'league', adding: false, msg: '' };
@@ -23,7 +23,8 @@ const OTHER_BOARDS = [
 const eligCell = (p, cls) => (p.elig == null ? '—' : p.elig < cls ? `${p.elig} <span class="muted small">returned</span>` : String(p.elig));
 const projCell = p => {
   if (!p.proj) return '—';
-  const tip = p.proj.model === undefined ? '' : ` title="${p.mock ? `Online mocks #${p.mock.rank} (2/3) + model` : 'Not in the online mocks’ top 40 · model'} ${p.proj.model ? `#${p.proj.model}` : 'undrafted'} (1/3)"`;
+  const model = p.proj.model ? `#${p.proj.model}` : 'undrafted';
+  const tip = p.proj.model === undefined ? '' : ` title="${esc(p.mock ? `From the online mocks (${mockText(p.mock)}). Our stats model alone: ${model}` : `Not in the online mocks · our stats model ${model}, placed after the mocks’ top 40`)}"`;
   return p.proj.pick ? `<span${tip}>R${p.proj.round} · #${p.proj.pick}</span>` : `<span class="muted"${tip}>UDFA</span>`;
 };
 const ageCell = p => (p.age != null ? `${p.ageEst ? '~' : ''}${fmt1(p.age)}` : '—');
@@ -62,10 +63,10 @@ export async function render(root, params, query) {
     const basis = `<b>Order</b> blends ${used.join(', ')}.`;
     if (status === 'watch') {
       return `<b>${st.cls} big board.</b> Every FBS QB, RB, WR and TE who can enter the ${st.cls} draft (three years out of high school: true juniors, redshirt sophomores, and players who returned to school), ranked for ${sf ? 'superflex' : '1QB'}. ${basis} `
-        + (mc ? `<b>Mocks</b> = his overall rank in the online NFL mock-draft consensus (<a class="link" href="${esc(mc.url)}" target="_blank" rel="noopener">${esc(mc.source)}</a>, which aggregates dozens of public mocks; top ${mc.size} at all positions), the biggest single input. ` : '')
+        + (mc ? `<b>Mocks</b> = where the online NFL mocks have him (<a class="link" href="${esc(mc.url)}" target="_blank" rel="noopener">${esc(mc.source)}</a>): his pick in the first round of the latest ${mc.recentMocks || ''} mocks and how many of them have him there, or his season-long consensus rank if he isn’t a first-rounder in recent mocks. The latest mocks count three times as much as the season-long list, and they’re the biggest input to the order and to the projected NFL pick. ` : '')
         + '<b>Expert-style</b> = where FantasyPros experts would likely rank him, learned from how they ranked past classes before the draft; '
         + '<b>Buzz</b> = his Wikipedia page views vs. the class, the hype and draft buzz stats can’t see. '
-        + `The Prospect Score adds <b>projected NFL draft capital</b> (the online mocks blended with a model trained on the ${drafts.length ? `${drafts[0]}–${drafts[drafts.length - 1]}` : 'recent'} drafts). Paste boards you trust below to blend them in. `
+        + `The Prospect Score adds <b>projected NFL draft capital</b> (from the online mocks, or for players they don’t list, a model trained on the ${drafts.length ? `${drafts[0]}–${drafts[drafts.length - 1]}` : 'recent'} drafts). Paste boards you trust below to blend them in. `
         + 'Real FantasyPros ranks and Sleeper ADP replace the projections automatically once they’re published; in March this becomes the combine class, and after the NFL Draft the drafted class.';
     }
     if (status === 'devy') {
@@ -101,9 +102,9 @@ export async function render(root, params, query) {
   const hasAdp = classList.some(p => adpOf(p) != null), hasEcr = classList.some(p => p.ecr);
   // pre-draft signals: expert-style projected rank and public attention (Wikipedia pageviews)
   const preCols = (sortable = false) => [
-    ...(classList.some(p => p.mock) ? [{ key: 'mock2', label: 'Mocks', n: true, sort: sortable ? p => p.mock?.rank ?? 99 : undefined,
-      title: 'Overall rank in the online NFL mock-draft consensus (Pro Football Network’s Mock Draft Index, which aggregates dozens of public mocks; it lists the top 40 at all positions)',
-      cell: x => { const p = x.p || x; return `<td class="n">${p.mock ? `#${p.mock.rank}` : '<span class="muted">—</span>'}</td>`; } }] : []),
+    ...(classList.some(p => p.mock) ? [{ key: 'mock2', label: 'Mocks', n: true, sort: sortable ? p => p.mock?.est ?? 99 : undefined,
+      title: 'Online NFL mock drafts (Pro Football Network’s Mock Draft Index). The pick where he’s the most-mocked player in the latest mocks’ first round, and in how many of them; “season” = not a consensus first-rounder lately, so his season-long consensus rank. Hover for details',
+      cell: x => { const p = x.p || x, m = p.mock; return `<td class="n" title="${esc(mockText(m))}">${!m ? '<span class="muted">—</span>' : m.recent != null ? `#${Math.round(m.recent)} <span class="muted small">${m.recentN}/${m.recentM}</span>` : `<span class="muted">#${m.rank} season</span>`}</td>`; } }] : []),
     ...(classList.some(p => p.xecr) ? [{ key: 'xecr', label: 'Expert-style', n: true, sort: sortable ? p => p.xecr : undefined,
       title: 'Where FantasyPros experts would likely rank him (1QB), from how they ranked past prospects with a similar profile before the draft. Replaced by the real expert ranking once FantasyPros ranks this class',
       cell: x => { const p = x.p || x; return `<td class="n">${p.ecr ? '<span class="muted">—</span>' : p.xecr ?? '—'}</td>`; } }] : []),
@@ -113,7 +114,7 @@ export async function render(root, params, query) {
   ];
   const filterQ = p => {
     const q = st.q.trim().toLowerCase();
-    return (st.pos === 'ALL' || p.pos === st.pos) && (!q || p.name.toLowerCase().includes(q) || (p.school || '').toLowerCase().includes(q));
+    return (st.pos === 'ALL' || p.pos === st.pos) && (!q || nameMatch(p.name, q) || (p.school || '').toLowerCase().includes(q));
   };
 
   const boardsPanel = () => `
@@ -147,7 +148,7 @@ export async function render(root, params, query) {
       ...(pre ? [
         { label: 'Year', title: 'College season this fall, counted from high school (3rd = true junior or redshirt sophomore)', cell: x => `<td>${x.p.yr ? ordinal(x.p.yr) : '—'}</td>` },
         { label: 'Eligible', title: `First NFL draft he can enter (three years out of high school). “Returned” = he could have entered an earlier draft and went back to school`, cell: x => `<td>${eligCell(x.p, st.cls)}</td>` },
-        { label: 'Proj. NFL pick', n: true, title: 'Where he’d go in the NFL draft if he declares. For players the online mocks list: two-thirds their mock rank, one-third our draft model. Otherwise the model (his rank at the position, mapped to where that many QBs/RBs/WRs/TEs have gone in the last 8 drafts), placed after the mocks’ top 40. Hover a pick for the parts', cell: x => `<td class="n">${projCell(x.p)}</td>` },
+        { label: 'Proj. NFL pick', n: true, title: 'Where he’d go in the NFL draft if he declares. For players the online mocks list: where they have him (latest mocks 3:1 over the season-long consensus). Otherwise our stats model (his rank at the position, mapped to where that many QBs/RBs/WRs/TEs have gone in the last 8 drafts), placed after the mocks’ top 40. Hover a pick for the details', cell: x => `<td class="n">${projCell(x.p)}</td>` },
         ...preCols(),
       ] : [
         { label: 'NFL draft', n: true, cell: x => `<td class="n">${x.p.draft ? `${x.p.draft.r}.${String(x.p.draft.p).padStart(2, '0')} <span class="muted small">${esc(x.p.draft.team)}</span>` : '—'}</td>` },

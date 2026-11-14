@@ -69,6 +69,24 @@ function autoUpdate() {
 }
 const status = () => ({ ...build, generated: dataTime(), stale: isStale(), nextUpdate: nextCutoff(), schedule: { day: UPDATE_DAY, hour: UPDATE_HOUR } });
 
+// Fingerprint of the app's code and data: it changes whenever a file in public/ or data/out/ changes, so a browser
+// tab left open can tell it's out of date and reload (public/js/version.js). Not reported mid-rebuild.
+let lastVersion = null;
+function appVersion() {
+  if (build.running && lastVersion) return lastVersion;
+  let max = 0, n = 0;
+  const walk = dir => {
+    for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+      const f = path.join(dir, d.name);
+      if (d.isDirectory()) walk(f);
+      else { max = Math.max(max, fs.statSync(f).mtimeMs); n++; }
+    }
+  };
+  walk(PUBLIC);
+  if (fs.existsSync(OUT)) for (const f of fs.readdirSync(OUT)) if (f.endsWith('.json')) { max = Math.max(max, fs.statSync(path.join(OUT, f)).mtimeMs); n++; }
+  return (lastVersion = `${Math.round(max)}-${n}`);
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   try {
@@ -80,6 +98,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/rebuild' && req.method === 'POST') { rebuild('manual'); return send(res, 202, status()); }
     if (url.pathname === '/api/status') return send(res, 200, status());
+    if (url.pathname === '/api/version') return send(res, 200, { v: appVersion() });
     if (url.pathname.startsWith('/data/')) return serveFile(res, OUT, url.pathname.slice(6));
     return serveFile(res, PUBLIC, url.pathname === '/' ? 'index.html' : url.pathname);
   } catch (e) {

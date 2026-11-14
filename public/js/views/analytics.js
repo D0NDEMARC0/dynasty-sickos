@@ -1,7 +1,7 @@
 // Advanced-stats explorer: per-position leaderboards with percentile heat and a configurable scatter plot.
 import { S, rows, ppg, scoringLabel } from '../store.js';
 import { M, COLUMNS, SCATTER_DEFAULT, metricValue } from '../metrics.js';
-import { esc, heat, table, sortRows, tipRows } from '../ui.js';
+import { esc, heat, table, sortRows, tipRows, nameMatch } from '../ui.js';
 import { scatter } from '../charts.js';
 import { playerCell, mount } from './common.js';
 
@@ -52,7 +52,7 @@ export function render(root, params, query) {
     const pts = qual.map(r => ({
       id: r.p.id, x: val(r, ax.x), y: val(r, ax.y), label: r.p.name.split(' ').slice(-1)[0] === r.p.name ? r.p.name : `${r.p.name[0]}. ${r.p.name.split(' ').slice(1).join(' ')}`,
       href: `#/player/${encodeURIComponent(r.p.id)}`,
-      me: q && r.p.name.toLowerCase().includes(q),
+      me: q && nameMatch(r.p.name, q),
       dim: false,
       tip: tipRows(`${r.p.name} · ${r.s.team || ''}`, [[M[ax.x].label, fmtv(ax.x, val(r, ax.x))], [M[ax.y].label, fmtv(ax.y, val(r, ax.y))], ['Analytics score', r.s.score ?? '—']]),
     }));
@@ -71,7 +71,7 @@ export function render(root, params, query) {
   const draw = () => {
     const all = pool();
     const q = st.q.trim().toLowerCase();
-    let list = all.filter(r => (!st.qual || r.s.q) && (!q || r.p.name.toLowerCase().includes(q) || (r.s.team || '').toLowerCase() === q));
+    let list = all.filter(r => (!st.qual || r.s.q) && (!q || nameMatch(r.p.name, q) || (r.s.team || '').toLowerCase() === q));
     drawChart(all);
     const est = S.meta.routeSource?.[st.season] === 'snap-estimate';
     const imported = all.filter(r => r.s.routesSrc).length;

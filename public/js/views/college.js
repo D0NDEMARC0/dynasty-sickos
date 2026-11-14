@@ -1,6 +1,6 @@
 // College football advanced-stats explorer (EPA, success rate, target/dominator shares, YPTPA, explosive rate…).
 import { loadProspects, loadCollegeSeason, CM, C_COLUMNS, C_SCATTER, C_NONSTAT, fmtC, fmtRow, collegeHeadshot } from '../college.js';
-import { esc, heat, table, sortRows, tipRows, posTag } from '../ui.js';
+import { esc, heat, table, sortRows, tipRows, posTag, nameMatch } from '../ui.js';
 import { scatter } from '../charts.js';
 import { mount } from './common.js';
 
@@ -54,7 +54,7 @@ export async function render(root, params, query) {
     const top = new Set([...qual].sort((a, b) => scoreOf(b) - scoreOf(a)).slice(0, 10).map(s => s.cid));
     const pts = qual.map(s => ({
       id: s.cid, x: s[ax.x], y: s[ax.y], label: `${s.name.split(' ')[0][0]}. ${s.name.split(' ').slice(1).join(' ')}`,
-      href: `#/college/player/${s.cid}`, me: q && s.name.toLowerCase().includes(q),
+      href: `#/college/player/${s.cid}`, me: q && nameMatch(s.name, q),
       tip: tipRows(`${s.name} · ${s.team || ''}`, [[CM[ax.x].label, fmtC(ax.x, s[ax.x])], [CM[ax.y].label, fmtC(ax.y, s[ax.y])], ['Class', s.cls || '—']]),
     }));
     const box = el.querySelector('[data-chart]');
@@ -72,7 +72,7 @@ export async function render(root, params, query) {
   const draw = () => {
     const all = pool();
     const q = st.q.trim().toLowerCase();
-    let list = all.filter(s => (!st.qual || s.q) && (!q || s.name.toLowerCase().includes(q) || (s.team || '').toLowerCase().includes(q)));
+    let list = all.filter(s => (!st.qual || s.q) && (!q || nameMatch(s.name, q) || (s.team || '').toLowerCase().includes(q)));
     drawChart(all);
     const keys = C_COLUMNS[st.pos].filter(k => all.some(s => s[k] != null));
     const cols = [

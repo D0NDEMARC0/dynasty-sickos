@@ -100,6 +100,15 @@ export async function loadProspects() {
   return cache.prospects;
 }
 export const prospectByCid = cid => cache.byCid?.get(String(cid)) || null;
+/** Where the online mocks have a prospect (Pro Football Network's Mock Draft Index), in plain words. */
+export function mockText(m) {
+  if (!m) return '';
+  const parts = [];
+  if (m.recent != null) parts.push(`latest ${m.recentM} mocks: ${m.picks.join(', ')}`);
+  else if (m.recentM) parts.push(`not the most-mocked player at any first-round pick in the latest ${m.recentM} mocks`);
+  if (m.rank) parts.push(`season-long consensus #${m.rank}`);
+  return parts.join(' · ');
+}
 export async function loadCollegeSeason(season) {
   if (!cache.seasons[season]) {
     const r = await fetchData(`data/college_${season}.json`);

@@ -1,6 +1,6 @@
 // College player profile: full career stats + advanced metrics, breakout age, dominator, combine and Prospect Score.
 import { S, rows } from '../store.js';
-import { loadProspects, loadCareer, prospectByCid, loadPahowdy, CM, C_PROFILE, COUNT_STATS, fmtC, fmtRow, collegeHeadshot, stars } from '../college.js';
+import { loadProspects, loadCareer, prospectByCid, loadPahowdy, CM, C_PROFILE, COUNT_STATS, fmtC, fmtRow, collegeHeadshot, stars, mockText } from '../college.js';
 import { pahowdyCard } from '../pahowdy.js';
 import { esc, fmtInt, fmt1, fmtPct, heat, table } from '../ui.js';
 import { pctBars } from '../charts.js';
@@ -87,12 +87,12 @@ function profileTiles(pos, bk, rc, bestDom, career, el, elig) {
   </div>`;
 }
 
-// where the projected pick comes from: online mocks (when they list him) blended with the draft model
+// where the projected pick comes from: the online mocks when they list him, otherwise the draft model
 function projNote(p) {
   const pr = p.proj, model = pr.model === undefined ? pr.pick : pr.model;
   const m = model ? `model #${model}` : 'model: undrafted';
-  if (p.mock) return `online mocks #${p.mock.rank} (2/3) + ${m} (1/3), if he declares`;
-  if (pr.model !== undefined) return `not in the online mocks’ top 40 · ${m}, if he declares`;
+  if (p.mock) return `online mocks, ${mockText(p.mock)} (our ${m}), if he declares`;
+  if (pr.model !== undefined) return `not in the online mocks · ${m}, placed after their top 40, if he declares`;
   return pr.pick ? `${p.pos}${pr.posRank} of the class by the draft model, if he declares`
     : `${p.pos}${pr.posRank} of the class by the draft model: past the number of ${p.pos}s usually drafted (stats only; it can’t see tape)`;
 }
