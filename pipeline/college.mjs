@@ -8,7 +8,7 @@ import { readParquet } from './load.mjs';
 import { nameKey } from './imports.mjs';
 import { fitDraftModel, ridge, spearman } from './draftmodel.mjs';
 import { loadPahowdy, slimPahowdy, PAHOWDY } from './pahowdy.mjs';
-import { wikiPlayers, recentViews, historyViews, avgViews } from './wiki.mjs';
+import { wikiPlayers, recentViews, historyViews, avgViews, findArticles } from './wiki.mjs';
 import { fileURLToPath } from 'node:url';
 
 // pre-draft Wikipedia pageviews of past classes (CC0 Wikimedia data), committed so builds don't re-fetch history
@@ -510,25 +510,38 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
   }
   // Wikipedia attention: average monthly pageviews from September of the final season through January (through
   // last month for players still in school), as a percentile within the class. No article = no attention.
-  const upcomingPool = [...(bySeason[current]?.players.keys() || [])].filter(cid => eligByCid.get(cid)?.year <= current + 1);
+  // current players for the next three classes (big board + two devy boards): FBS, with real production or a 4–5★
+  // recruiting profile. Articles Wikidata doesn't list are found on Wikipedia directly (name + school category).
+  const poolFor = Y => [...(bySeason[current]?.players.values() || [])].filter(s => {
+    const el = eligByCid.get(s.cid)?.year;
+    if (el == null || (Y === current + 1 ? el > Y : el !== Y) || s.div !== 'fbs') return false;
+    return s.q || bySeason[current - 1]?.players.get(s.cid)?.q || careerInfo.get(s.cid)?.rc?.stars >= 4;
+  }).map(s => s.cid);
+  const pools = Object.fromEntries([current + 1, current + 2, current + 3].map(Y => [Y, poolFor(Y)]));
+  const missing = [...new Set(Object.values(pools).flat())].filter(cid => !wikiOf.has(cid)).map(cid => {
+    const list = career.get(cid), last = list[list.length - 1];
+    return { key: cid, name: last.name, pos: last.pos, teams: [...new Set(list.map(s => s.team).filter(Boolean))] };
+  });
+  for (const [cid, title] of await findArticles(missing, { schoolKey, log })) wikiOf.set(cid, { title, name: null, dob: null, colleges: [] });
   const hist = await historyViews(leavers.map(l => wikiOf.get(l.cid)?.title).filter(Boolean),
     { seedFile: WIKI_SEED, log, budgetMs: Number(process.env.WIKI_BUDGET_MIN || 8) * 60e3 });
-  const recent = await recentViews(upcomingPool.map(cid => wikiOf.get(cid)?.title).filter(Boolean), log);
-  const attention = new Map(); // `${cid}|${draft year}` -> percentile within the class
+  const recent = await recentViews([...new Set(Object.values(pools).flat())].map(cid => wikiOf.get(cid)?.title).filter(Boolean), log);
+  const attention = new Map(); // `${cid}|${draft year}` -> log10(1 + monthly views)
   const buzzPct = new Map(); // `${cid}|${draft year}` -> percentile within the class (for display)
   const rankAttention = (cids, Y, viewsOf) => {
     // model feature: log10(1 + monthly views), which keeps how much bigger the biggest names are (a percentile caps
-    // everyone famous at ~99). No article = 0; an article whose views couldn't be fetched gets the typical value.
+    // everyone famous at ~99). No article = 0. An article whose views couldn't be fetched this time gets a
+    // conservative value (the lower quartile of articles in the class) rather than inflating an unknown.
     const vals = cids.map(cid => { const w = wikiOf.get(cid); return w ? viewsOf(w.title) ?? null : 0; });
     const logs = vals.map(v => (v == null ? null : Math.log10(1 + v)));
     const art = cids.map((cid, i) => (wikiOf.has(cid) ? logs[i] : null)).filter(v => v != null).sort((a, b) => a - b);
-    const typical = art.length ? art[Math.floor(art.length / 2)] : 0;
-    const full = logs.map(v => v ?? typical);
+    const fallback = art.length ? art[Math.floor(art.length / 4)] : 0;
+    const full = logs.map(v => v ?? fallback);
     const f = midRankFn(full);
     cids.forEach((cid, i) => { attention.set(`${cid}|${Y}`, full[i]); buzzPct.set(`${cid}|${Y}`, Math.round(f(full[i]) ?? 0)); });
   };
   for (let Y = dataStart + 2; Y <= current; Y++) rankAttention(leavers.filter(l => l.Y === Y).map(l => l.cid), Y, t => avgViews(hist[t], `${Y - 1}09`, `${Y}01`));
-  rankAttention(upcomingPool, current + 1, t => recent[t]);
+  for (const [Y, cids] of Object.entries(pools)) rankAttention(cids, Number(Y), t => recent[t]);
   if (process.env.WRITE_WIKI_SEED) {
     // keep only each past player's pre-draft window (Sep–Jan): small enough to commit
     const seed = {};
@@ -611,6 +624,14 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
       }
     }
   }
+  // devy boards: the two classes after that — current college players first eligible in those drafts, with real
+  // production or a 4–5★ recruiting profile
+  for (const y of [upcoming + 1, upcoming + 2]) {
+    for (const cid of pools[y] || []) {
+      const s = bySeason[current].players.get(cid);
+      add(y, { status: 'devy', cid, name: s.name, pos: s.pos, school: s.team });
+    }
+  }
 
   // ---- features + Prospect Score
   for (const p of prospects) {
@@ -642,17 +663,25 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
     }
   }
   // projected NFL draft slot "if he declares": the k-th best QB/RB/WR/TE by the model takes the k-th slot at the position
+  // (each class separately: the 2027 board, then the 2028 and 2029 devy boards)
   const preDraft = prospects.filter(p => !p.draft && p.ev != null);
-  for (const pos of SKILL) {
-    const slots = posSlots[pos] || [];
-    preDraft.filter(p => p.pos === pos).sort((a, b) => b.ev - a.ev).forEach((p, k) => {
-      const pick = k < slots.length ? Math.round(slots[k]) : null;
-      p.proj = { pick, round: pick ? Math.min(7, Math.ceil(pick / 32)) : null, posRank: k + 1, ev: rd(p.ev, 1) };
-    });
+  for (const cls of new Set(preDraft.map(p => p.draftClass))) {
+    const inClass = preDraft.filter(p => p.draftClass === cls);
+    for (const pos of SKILL) {
+      const slots = posSlots[pos] || [];
+      inClass.filter(p => p.pos === pos).sort((a, b) => b.ev - a.ev).forEach((p, k) => {
+        const pick = k < slots.length ? Math.round(slots[k]) : null;
+        p.proj = { pick, round: pick ? Math.min(7, Math.ceil(pick / 32)) : null, posRank: k + 1, ev: rd(p.ev, 1) };
+      });
+    }
+    inClass.sort((a, b) => (a.proj.pick ?? 999) - (b.proj.pick ?? 999) || b.ev - a.ev).forEach((p, i) => { p.proj.rank = i + 1; });
   }
-  preDraft.sort((a, b) => (a.proj.pick ?? 999) - (b.proj.pick ?? 999) || b.ev - a.ev).forEach((p, i) => { p.proj.rank = i + 1; });
   // expert-style rank: where FantasyPros experts would likely put him, by how they ranked similar past prospects (1QB)
-  prospects.filter(p => !p.draft && p.xes != null).sort((a, b) => b.xes - a.xes).forEach((p, i) => { p.xecr = i + 1; delete p.xes; });
+  const withXes = prospects.filter(p => !p.draft && p.xes != null);
+  for (const cls of new Set(withXes.map(p => p.draftClass))) {
+    withXes.filter(p => p.draftClass === cls).sort((a, b) => b.xes - a.xes).forEach((p, i) => { p.xecr = i + 1; });
+  }
+  for (const p of withXes) delete p.xes;
   for (const pos of Object.keys(PROD)) {
     const group = prospects.filter(p => p.pos === pos);
     const feat = {};
@@ -685,10 +714,14 @@ export async function buildCollege({ current, nflBy, gsis2sid, out, log, private
 
   // the pre-combine board can be long: keep the strongest 300, plus everyone the model projects to be drafted and
   // every 4–5 star recruit, so well-known names never disappear from the board
-  const watch = prospects.filter(p => p.status === 'watch').sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  const dropped = new Set(watch.slice(300).filter(p => !p.proj?.pick && !(p.recruit?.stars >= 4) && !(p.xecr <= 120)));
+  const dropped = new Set();
+  for (const [cls, c] of Object.entries(classes)) {
+    if (c.status !== 'watch' && c.status !== 'devy') continue;
+    const list = prospects.filter(p => p.draftClass === Number(cls)).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+    for (const p of list.slice(c.status === 'watch' ? 300 : 250)) if (!p.proj?.pick && !(p.recruit?.stars >= 4) && !(p.xecr <= 120)) dropped.add(p);
+  }
   for (let i = prospects.length - 1; i >= 0; i--) if (dropped.has(prospects[i])) prospects.splice(i, 1);
-  if (classes[upcoming]?.status === 'watch') classes[upcoming].count = prospects.filter(p => p.draftClass === upcoming).length;
+  for (const [cls, c] of Object.entries(classes)) if (c.status === 'watch' || c.status === 'devy') c.count = prospects.filter(p => p.draftClass === Number(cls)).length;
 
   // ---- write files
   const slim = s => Object.fromEntries(Object.entries(s).filter(([k, v]) => v != null && !['hs', 'dob', 'recruitId', 'tid'].includes(k)));

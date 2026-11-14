@@ -4,10 +4,19 @@
 // buzz and fantasy expert rankings track closely and college stats can't see.
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CACHE_DIR } from './fetch.mjs';
 
 const UA = 'dynasty-lab-analytics/1.0 (personal fantasy football analytics)';
 const DAY = 864e5;
+// committed fallbacks for builds on shared servers that Wikipedia may throttle (written with WRITE_WIKI_SEED=1)
+const SEED_DIR = path.dirname(fileURLToPath(import.meta.url));
+const seed = name => { const f = path.join(SEED_DIR, name); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {}; };
+export function writeSeeds() {
+  const read = n => (fs.existsSync(path.join(CACHE_DIR, n)) ? JSON.parse(fs.readFileSync(path.join(CACHE_DIR, n), 'utf8')) : {});
+  fs.writeFileSync(path.join(SEED_DIR, 'wiki_titles_seed.json'), JSON.stringify(Object.fromEntries(Object.entries(read('wiki_titles.json')).map(([k, v]) => [k, v.title || null]))));
+  fs.writeFileSync(path.join(SEED_DIR, 'wiki_recent_seed.json'), JSON.stringify(Object.fromEntries(Object.entries(read('wiki_recent.json')).map(([k, v]) => [k, Math.round(v.v)]))));
+}
 
 /** Every American football player born 1995+ with an English Wikipedia article. Cached for a week. */
 export async function wikiPlayers(log) {
@@ -55,6 +64,72 @@ export async function wikiPlayers(log) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// one Action API GET with retry on throttling; returns parsed JSON or null
+async function actionApi(params) {
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    const r = await fetch(`https://en.wikipedia.org/w/api.php?${new URLSearchParams({ format: 'json', formatversion: '2', ...params })}`, { headers: { 'User-Agent': UA } }).catch(() => null);
+    if (r?.status === 429) { await sleep((Number(r.headers.get('retry-after')) || 20) * 1000 + 1000); continue; }
+    if (!r?.ok) return null;
+    return r.json().catch(() => null);
+  }
+  return null;
+}
+
+/**
+ * Wikipedia articles for current college players that Wikidata doesn't list (its entries are often missing a birth
+ * date or occupation). Tries "Name", "Name (American football)" and "Name (<position>)", and accepts a page only if
+ * it's in a "<school> … football players" category for a school the player attended. Cached two weeks.
+ * players: [{ key, name, pos, teams: [school names] }] → Map(key -> title)
+ */
+export async function findArticles(players, { schoolKey, log }) {
+  const file = path.join(CACHE_DIR, 'wiki_titles.json');
+  const cache = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  const seeded = seed('wiki_titles_seed.json');
+  for (const [k, title] of Object.entries(seeded)) cache[k] ||= { at: Date.now() - 7 * DAY, title }; // counts as a week old
+  const POSW = { QB: 'quarterback', RB: 'running back', WR: 'wide receiver', TE: 'tight end' };
+  const variants = p => [...new Set([p.name, `${p.name} (American football)`, `${p.name} (${POSW[p.pos] || 'American football'})`, p.name.replace(/\s+(Jr\.?|Sr\.?|II|III|IV)$/i, '')])];
+  const todo = players.filter(p => !cache[p.key] || Date.now() - cache[p.key].at > 14 * DAY);
+  const titleInfo = new Map(); // requested title -> { title, cats }
+  const all = [...new Set(todo.flatMap(variants))];
+  for (let i = 0; i < all.length; i += 50) {
+    const batch = all.slice(i, i + 50);
+    let cont = {};
+    const pages = new Map(), back = new Map();
+    for (let guard = 0; guard < 20; guard++) { // categories come in pages ("continue")
+      const j = await actionApi({ action: 'query', prop: 'categories', cllimit: 'max', clshow: '!hidden', redirects: '1', titles: batch.join('|'), ...cont });
+      if (!j?.query) break;
+      for (const n of j.query.normalized || []) back.set(n.to, n.from);
+      for (const n of j.query.redirects || []) back.set(n.to, back.get(n.from) || n.from);
+      for (const pg of j.query.pages || []) {
+        const cur = pages.get(pg.title) || { missing: !!pg.missing, cats: [] };
+        cur.cats.push(...(pg.categories || []).map(c => c.title));
+        pages.set(pg.title, cur);
+      }
+      if (!j.continue) break;
+      cont = j.continue;
+      await sleep(1500);
+    }
+    for (const [t, v] of pages) if (!v.missing) titleInfo.set(back.get(t) || t, { title: t.replace(/ /g, '_'), cats: v.cats });
+    await sleep(2500);
+  }
+  let found = 0;
+  for (const p of todo) {
+    const keys = p.teams.map(schoolKey).filter(Boolean);
+    let hit = null;
+    for (const v of variants(p)) {
+      const info = titleInfo.get(v);
+      if (!info) continue;
+      const ok = info.cats.some(c => /football players/i.test(c) && keys.some(k => schoolKey(c).includes(k)));
+      if (ok) { hit = info.title; break; }
+    }
+    cache[p.key] = { at: Date.now(), title: hit };
+    if (hit) found++;
+  }
+  if (todo.length) fs.writeFileSync(file, JSON.stringify(cache));
+  log?.(`  Wikipedia article lookup: ${todo.length ? `checked ${todo.length} players, found ${found}` : 'cached'}`);
+  return new Map(players.filter(p => cache[p.key]?.title).map(p => [p.key, cache[p.key].title]));
+}
+
 /**
  * Recent attention for players still in school: average daily views over the last 60 days × 30 (a monthly
  * equivalent), from the MediaWiki API — 50 articles per request, so a whole class is a handful of calls.
@@ -63,16 +138,16 @@ export async function recentViews(titles, log) {
   // cached ~6 days; a throttled or empty answer is never recorded as "no views" (it's retried next build)
   const file = path.join(CACHE_DIR, 'wiki_recent.json');
   const cache = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  for (const [t, v] of Object.entries(seed('wiki_recent_seed.json'))) cache[t] ||= { at: 0, v }; // stale: refreshed if possible
   const list = [...new Set(titles)];
   const todo = list.filter(t => !cache[t] || Date.now() - cache[t].at > 6 * DAY);
   let got = 0;
   for (let i = 0; i < todo.length; i += 50) {
     const batch = todo.slice(i, i + 50);
-    for (let attempt = 1; attempt <= 6; attempt++) {
-      const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=pageviews&pvipdays=60&redirects=1&format=json&formatversion=2&titles=${encodeURIComponent(batch.join('|'))}`, { headers: { 'User-Agent': UA } }).catch(() => null);
-      if (r?.status === 429) { await sleep((Number(r.headers.get('retry-after')) || 20) * 1000 + 1000); continue; }
-      if (!r?.ok) break;
-      const j = await r.json().catch(() => null);
+    // the API returns views for only part of the batch per call and hands back a "continue" token for the rest
+    let cont = {};
+    for (let guard = 0; guard < 30; guard++) {
+      const j = await actionApi({ action: 'query', prop: 'pageviews', pvipdays: '60', redirects: '1', titles: batch.join('|'), ...cont });
       if (!j?.query) break;
       // map API titles (spaces, redirect targets) back to the titles we asked for
       const back = new Map();
@@ -81,12 +156,14 @@ export async function recentViews(titles, log) {
       for (const p of j.query.pages || []) {
         const key = (back.get(p.title) || p.title).replace(/ /g, '_');
         const v = Object.values(p.pageviews || {}).filter(x => x != null);
-        if (v.length >= 14) { cache[key] = { at: Date.now(), v: (v.reduce((a, b) => a + b, 0) / v.length) * 30 }; got++; }
+        if (v.length >= 14) { if (!cache[key] || cache[key].at < Date.now() - 6 * DAY) got++; cache[key] = { at: Date.now(), v: (v.reduce((a, b) => a + b, 0) / v.length) * 30 }; }
         else if (p.missing) { cache[key] = { at: Date.now(), v: 0 }; got++; }
       }
-      break;
+      if (!j.continue) break;
+      cont = j.continue;
+      await sleep(1000);
     }
-    await sleep(3000);
+    await sleep(2000);
   }
   if (todo.length) fs.writeFileSync(file, JSON.stringify(cache));
   const out = Object.fromEntries(list.filter(t => cache[t]).map(t => [t, cache[t].v]));

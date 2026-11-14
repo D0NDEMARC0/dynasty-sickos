@@ -33,7 +33,7 @@ export async function render(root, params, query) {
   const { meta } = data;
   const classes = Object.keys(meta.classes).map(Number).sort((a, b) => b - a);
   if (query.class) st.cls = Number(query.class);
-  if (!classes.includes(st.cls)) st.cls = classes[0];
+  if (!classes.includes(st.cls)) st.cls = classes.includes(meta.upcoming) ? meta.upcoming : classes[0]; // open on the next draft class
   const status = meta.classes[st.cls]?.status;
   const pre = status !== 'drafted';
   st.view = VIEWS.includes(query.view) ? query.view : pre ? 'board' : 'rankings';
@@ -60,6 +60,10 @@ export async function render(root, params, query) {
         + '<b>Buzz</b> = his Wikipedia page views vs. the class, the hype and draft buzz stats can’t see. '
         + `The Prospect Score adds <b>projected NFL draft capital</b> from a model trained on the ${drafts.length ? `${drafts[0]}–${drafts[drafts.length - 1]}` : 'recent'} drafts. Paste boards you trust below to blend them in. `
         + 'Real FantasyPros ranks and Sleeper ADP replace the projections automatically once they’re published; in March this becomes the combine class, and after the NFL Draft the drafted class.';
+    }
+    if (status === 'devy') {
+      return `<b>${st.cls} devy board.</b> College players first eligible for the ${st.cls} draft (${st.cls - meta.upcoming === 1 ? 'true sophomores and redshirt freshmen' : 'true freshmen'} this fall) with real production or a 4–5★ recruiting profile, ranked for ${sf ? 'superflex' : '1QB'}. ${basis} `
+        + 'Same models as the next class’s big board, with more uncertainty the further out the draft is: recruiting, early production, breakout age and Buzz carry the most weight. Paste devy rankings you trust below to blend them in.';
     }
     if (status === 'combine') return `<b>${st.cls} class — combine invitees.</b> Draft capital is added automatically after the NFL Draft. ${basis}`;
     return `<b>${st.cls} draft class.</b> ${basis}`;
@@ -107,13 +111,13 @@ export async function render(root, params, query) {
       <div class="bhead">
         <div>
           <h2 style="margin:0">Your boards</h2>
-          <p class="muted small" style="margin:4px 0 0">Paste a ranking from any site you read (Footballguys, Draft Sharks, KeepTradeCut, a r/DynastyFF post). It counts for half of the order above and gets its own column. It’s saved only in this browser. Quickest real consensus: FantasyPros publishes a free devy ranking (link below). Select the list, copy, and paste it here.</p>
+          <p class="muted small" style="margin:4px 0 0">Paste a ranking or an NFL mock draft from any site you read (Footballguys, Draft Sharks, KeepTradeCut, a r/DynastyFF post, any 2027 mock). It counts for half of the order above and gets its own column; paste two or three mocks and the board follows their consensus. It’s saved only in this browser. Quickest real consensus: FantasyPros publishes a free devy ranking (link below). Select the list, copy, and paste it here.</p>
         </div>
-        ${st.adding ? '' : '<button class="btn" data-act="addboard">+ Paste a board</button>'}
+        ${st.adding ? '' : '<button class="btn" data-act="addboard">+ Paste a board or mock</button>'}
       </div>
       ${st.adding ? `<div class="bform">
         <input type="text" data-k="bname" placeholder="Source (e.g. Footballguys)" maxlength="32">
-        <textarea data-k="btext" rows="8" placeholder="One player per line, best first, e.g.&#10;1. Jeremiah Smith WR Ohio State&#10;2. Julian Sayin QB Ohio State"></textarea>
+        <textarea data-k="btext" rows="8" placeholder="One player per line, best first. Rankings or mock drafts both work, e.g.&#10;1. Jeremiah Smith WR Ohio State&#10;2. Raiders — Julian Sayin, QB, Ohio State"></textarea>
         <div class="toolbar" style="margin:0"><button class="btn primary" data-act="saveboard">Add board</button><button class="btn" data-act="cancelboard">Cancel</button><span class="small" data-bmsg></span></div>
       </div>` : ''}
       ${st.msg ? `<p class="small" style="margin:8px 0 0">${st.msg}</p>` : ''}

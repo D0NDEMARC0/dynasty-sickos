@@ -52,13 +52,13 @@ To preview the website build locally: `node pipeline/build.mjs --public && node 
 - **Matchups** – fantasy points allowed by every defense to QBs, RBs, WRs and TEs (your scoring), run/pass funnel
   defenses, man/zone coverage rates, and offensive lines (sack, hit and pressure rates, RB yards before contact).
 - **Player pages** – percentile bars, weekly fantasy points, season history, game log, and college career.
-- **Prospects** – a **big board** for the next draft class (every FBS QB/RB/WR/TE who's draft-eligible, tiered by
+- **Prospects** – **devy boards** for the two classes after next, and a **big board** for the next draft class (every FBS QB/RB/WR/TE who's draft-eligible, tiered by
   rookie-draft round, with a projected NFL pick from a draft-capital model trained on recent drafts, an
   "expert-style" rank learned from how FantasyPros experts ranked past classes before the draft, and a "Buzz"
   attention score from Wikipedia page views), plus the
   Prospect Score for the last four rookie classes: college production, breakout age, combine athleticism, recruiting,
   age and draft capital — with Sleeper ADP, FantasyPros rookie rankings and a consensus **mock draft** (generic, or
-  your Sleeper league with its real pick order, traded picks and team needs). **Paste any board you read**
+  your Sleeper league with its real pick order, traded picks and team needs). **Paste any board or NFL mock draft you read**
   (Footballguys, Draft Sharks, KeepTradeCut, a r/DynastyFF post…) and it's blended in; pasted boards stay in your
   browser. The incoming class goes from the big board (fall) to combine invitees (March) to the drafted class
   (late April) automatically.

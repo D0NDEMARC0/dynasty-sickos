@@ -90,7 +90,7 @@ function profileTiles(pos, bk, rc, bestDom, career, el, elig) {
 function prospectTiles(p, row) {
   const c = p.comps || {};
   return `<div class="tiles">
-    ${tile('Prospect score', p.score, `${p.draftClass} class · ${p.status === 'drafted' ? 'drafted' : p.status === 'combine' ? 'combine invitee' : 'big board'}`)}
+    ${tile('Prospect score', p.score, `${p.draftClass} class · ${p.status === 'drafted' ? 'drafted' : p.status === 'combine' ? 'combine invitee' : p.status === 'devy' ? 'devy board' : 'big board'}`)}
     ${tile('Production', c.prod, 'percentile vs prospects at the position')}
     ${p.pos !== 'QB' ? tile('Breakout score', c.brk, 'earlier breakout = higher') : ''}
     ${tile('Athleticism', c.ath, p.combine ? 'combine percentile' : 'no combine data yet')}
