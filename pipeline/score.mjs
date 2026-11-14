@@ -26,7 +26,14 @@ export const DISPLAY = {
   RB: ['xfp', 'fpoe', 'ppg', 'osh', 'csh', 'tsh', 'frs', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
   QB: ['xfp', 'fpoe', 'ppg', 'epadb', 'cpoe', 'fread', 'chkr', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
 };
-const LOWER_BETTER = new Set(['drop', 'stuff', 'skr', 'twp', 'press', 'bad']);
+// Coverage, blitz, motion and route splits: percentiles for the Analytics "Coverage & splits" columns.
+export const SPLIT_METRICS = {
+  WR: ['yprrC1', 'yprrC2', 'yprrC3', 'yprrC4', 'yprrBlitz', 'tprrBlitz', 'yprrMo', 'yprrNoMo', 'contMan', 'contZone', 'vert'],
+  TE: ['yprrC1', 'yprrC2', 'yprrC3', 'yprrC4', 'yprrBlitz', 'tprrBlitz', 'yprrMo', 'yprrNoMo', 'contMan', 'contZone', 'vert'],
+  RB: ['yprrMan', 'yprrZone', 'yprrBlitz', 'yprrMo', 'yprrNoMo'],
+  QB: ['epaMan', 'epaZone', 'epaBlitz', 'epaNoBlitz', 'epaPress', 'epaClean'],
+};
+const LOWER_BETTER = new Set(['drop', 'stuff', 'skr', 'twp', 'press', 'bad', 'contMan', 'contZone']);
 
 const volume = (pos, s) => (pos === 'QB' ? s.db : pos === 'RB' ? (s.box?.car ?? 0) + (s.box?.tgt ?? 0) : s.routes ?? 0);
 const threshold = (pos, teamGames) => (pos === 'QB' ? 14 : pos === 'RB' ? 6 : 10) * teamGames;
@@ -44,7 +51,7 @@ export function scoreSeason(rows, posOf, teamGames) {
     const all = [...rows].filter(([id]) => posOf(id) === pos);
     const T = threshold(pos, teamGames);
     const pool = all.filter(([, s]) => volume(pos, s) >= T);
-    const metrics = new Set([...MODEL[pos].map(m => m[0]), ...DISPLAY[pos]]);
+    const metrics = new Set([...MODEL[pos].map(m => m[0]), ...DISPLAY[pos], ...(SPLIT_METRICS[pos] || [])]);
     const dist = {};
     for (const m of metrics) dist[m] = pool.map(([, s]) => get(s, m)).filter(v => v != null && Number.isFinite(v)).sort((a, b) => a - b);
     for (const [, s] of all) {

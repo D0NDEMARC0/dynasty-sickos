@@ -1,7 +1,7 @@
 // Player profile: dynasty value, analytics percentiles, weekly fantasy points, season history and game log.
-import { S, rows, ppg, finish, loadLogs, weekPoints, scoringLabel } from '../store.js';
+import { S, rows, ppg, finish, loadLogs, loadSplits, weekPoints, scoringLabel } from '../store.js';
 import { M, PROFILE, metricValue } from '../metrics.js';
-import { esc, fmtInt, fmt1, fmtPct, headshot, injTag, signalTag, tipRows, table } from '../ui.js';
+import { esc, fmtInt, fmt1, fmtPct, headshot, injTag, signalTag, tipRows, table, heat } from '../ui.js';
 import { columns, pctBars } from '../charts.js';
 import { mount, isRookie } from './common.js';
 import { loadProspects, loadCareer, prospectByCid, loadPahowdy, CM, fmtRow } from '../college.js';
@@ -55,6 +55,7 @@ export async function render(root, params, query) {
       </div>
       <div class="card"><h2>Weekly fantasy points · ${season}</h2><div data-weekly><span class="spinner"></span></div></div>
     </div>
+    <div data-splits></div>
     <div class="card"><h2>Season history</h2><div class="tablewrap" style="box-shadow:none">${history(p, years)}</div></div>
     <div class="card"><h2>Game log · ${season}</h2><div class="tablewrap" style="box-shadow:none" data-log><span class="spinner"></span></div></div>`
     : '<div class="card empty">No NFL stats yet — value is driven by market price and age.</div>'}
@@ -69,6 +70,12 @@ export async function render(root, params, query) {
   collegeCard(el.querySelector('[data-college]'), p);
   pahowdyBox(el.querySelector('[data-pahowdy]'), p);
   if (!season) return;
+  if (s && S.meta.splitSeasons?.includes(season)) {
+    loadSplits(season).then(all => {
+      const x = all[p.id], box = el.querySelector('[data-splits]');
+      if (x && box) box.innerHTML = splitsCard(p, { ...s, season, split: x.sp, rtree: x.rt, qsplit: x.qs, splitEst: x.est });
+    });
+  }
   const logs = await loadLogs(season);
   const games = logs[p.id] || [];
   const avg = s && s.g ? ppg(p, s) : null;
@@ -130,6 +137,55 @@ function percentiles(p, s) {
   const head = `<div class="pbar" style="margin-bottom:2px"><span></span><span class="muted small">0 ← percentile → 100</span><span class="v muted small">Value</span><span class="p small">Pct</span></div>`;
   const score = s.score != null ? `<p class="small" style="margin:0 0 10px">Season Analytics Score <b>${s.score}</b>${s.q ? '' : ' <span class="muted">(small sample, shrunk toward 35)</span>'}</p>` : '';
   return score + head + pctBars(items);
+}
+
+// Coverage, blitz and motion splits (receivers: routes, targets, yards; QBs: EPA per dropback), plus the route tree.
+const SPLIT_ROWS = [
+  ['M', 'vs man coverage'], ['Z', 'vs zone coverage'],
+  ['C0', 'Cover 0', 'man, no deep safety'], ['C1', 'Cover 1', 'man, one deep safety'], ['C2M', 'Cover 2 man', 'man under two deep safeties'],
+  ['C2', 'Cover 2', 'zone, two deep'], ['C3', 'Cover 3', 'zone, three deep'], ['C4', 'Cover 4', 'quarters: four deep'], ['C6', 'Cover 6', 'quarter-quarter-half'], ['C9', 'Cover 9'],
+  ['BL', 'vs blitz', '5+ pass rushers'], ['NB', 'no blitz', '4 or fewer rushers'], ['MO', 'with pre-snap motion'], ['NM', 'no motion'],
+];
+const QB_ROWS = [['M', 'vs man coverage'], ['Z', 'vs zone coverage'], ['BL', 'vs blitz', '5+ pass rushers'], ['NB', 'no blitz', '4 or fewer rushers'], ['CL', 'clean pocket'], ['PR', 'pressured']];
+const routeName = r => r.toLowerCase().replace(/(^|[\s/])\w/g, c => c.toUpperCase()).replace('/', ' / ');
+// shade a split by how it compares to his own overall rate: blue above, red below (±50% = full color)
+const vsOwn = (v, base) => (v == null || !base ? '' : heat(Math.max(0, Math.min(100, 50 + 100 * (v / base - 1)))));
+const label = ([, name, hint]) => `${esc(name)}${hint ? ` <span class="muted small">${esc(hint)}</span>` : ''}`;
+
+function splitsCard(p, s) {
+  if (!s) return '';
+  if (p.pos === 'QB') {
+    const q = s.qsplit;
+    if (!q) return '';
+    const rowsQ = QB_ROWS.filter(([k]) => q[k]);
+    return `<div class="card"><h2>Splits · ${esc(String(s.season ?? ''))}</h2>
+      <div class="tablewrap" style="box-shadow:none"><table class="data"><thead><tr><th>Split</th><th class="n">Dropbacks</th><th class="n" title="Expected points added per dropback">EPA/DB</th></tr></thead><tbody>
+      ${rowsQ.map(row => { const [n, e] = q[row[0]]; return `<tr><td>${label(row)}</td><td class="n">${fmtInt(n)}</td><td class="n heat" style="${n >= 40 ? vsOwn(e - (s.epadb ?? 0) + 1, 1) : ''}">${n >= 40 ? `${e > 0 ? '+' : ''}${e.toFixed(2)}` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
+      </tbody></table></div>
+      <p class="muted small" style="margin:8px 0 0">Shading compares each split with his overall EPA per dropback (${s.epadb != null ? `${s.epadb > 0 ? '+' : ''}${s.epadb.toFixed(2)}` : '—'}). Needs 40+ dropbacks. Coverage and pressure tags are published after each season; the blitz split is charted within two days of each game. Data: FTN Data via nflverse.</p></div>`;
+  }
+  const sp = s.split, rt = s.rtree;
+  if (!sp && !rt) return '';
+  const total = s.routes || 0;
+  const splitTable = !sp ? '' : `
+    <h3 style="margin:0 0 6px">Coverage, blitz and motion</h3>
+    <div class="tablewrap" style="box-shadow:none"><table class="data"><thead><tr><th>Split</th><th class="n">Routes</th><th class="n" title="Share of his routes">% routes</th><th class="n">Tgt</th><th class="n">Yds</th><th class="n" title="Yards per route run">YPRR</th><th class="n" title="Targets per route run">TPRR</th></tr></thead><tbody>
+    ${SPLIT_ROWS.filter(([k]) => sp[k]).map(row => {
+      const [rts, tgt, yds] = sp[row[0]];
+      const ok = rts >= 40, yprr = ok ? yds / rts : null, tprr = ok ? tgt / rts : null;
+      return `<tr${row[0] === 'C0' || row[0] === 'BL' || row[0] === 'MO' ? ' class="sep-top"' : ''}><td>${label(row)}</td><td class="n">${fmtInt(rts)}${s.splitEst && ['BL', 'NB', 'MO', 'NM'].includes(row[0]) ? '<span class="muted">*</span>' : ''}</td><td class="n">${total ? fmtPct(rts / total) : '—'}</td><td class="n">${tgt}</td><td class="n">${fmtInt(yds)}</td>
+        <td class="n heat" style="${vsOwn(yprr, s.yprr)}">${yprr != null ? yprr.toFixed(2) : '<span class="muted">—</span>'}</td><td class="n heat" style="${vsOwn(tprr, s.tprr)}">${tprr != null ? fmtPct(tprr) : '<span class="muted">—</span>'}</td></tr>`;
+    }).join('')}
+    </tbody></table></div>
+    <p class="muted small" style="margin:8px 0 14px">Shading compares each split with his own overall YPRR (${s.yprr != null ? s.yprr.toFixed(2) : '—'}) and TPRR (${s.tprr != null ? fmtPct(s.tprr) : '—'}). Rates need 40+ routes. ${s.splitEst ? '* Routes estimated from his team’s blitz and motion rates: coverage tags and play-level participation for this season are published after it ends.' : 'Routes vs a split = his on-field dropbacks with that tag × his position’s route rate.'}</p>`;
+  const rtTotal = rt ? Object.values(rt).reduce((n, a) => n + a[0], 0) : 0;
+  const routeTable = !rt ? '' : `
+    <h3 style="margin:0 0 6px">Targets by route</h3>
+    <div class="tablewrap" style="box-shadow:none"><table class="data"><thead><tr><th>Route</th><th class="n">Tgt</th><th class="n" title="Share of his route-tagged targets">% tgt</th><th class="n">Catch %</th><th class="n" title="Yards per target">Yds/tgt</th></tr></thead><tbody>
+    ${Object.entries(rt).sort((a, b) => b[1][0] - a[1][0]).map(([name, [t, c, y]]) => `<tr><td>${esc(routeName(name))}</td><td class="n">${t}</td><td class="n">${fmtPct(t / rtTotal)}</td><td class="n">${fmtPct(c / t)}</td><td class="n">${(y / t).toFixed(1)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted small" style="margin:8px 0 0">The route he ran on each target (charting only tags the targeted receiver’s route, so untargeted routes aren’t counted). Data: FTN Data via nflverse.</p>`;
+  return `<div class="card"><h2>Splits · ${esc(String(s.season ?? ''))}</h2>${splitTable}${routeTable}</div>`;
 }
 
 function lineFor(pos, g) {

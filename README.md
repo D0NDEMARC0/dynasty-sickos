@@ -54,7 +54,10 @@ open while the code or data changes reloads into the new version when you next c
   and ▲ Buy / ▼ Sell signals where fundamentals and price disagree. Tune the analytics weight and an age tilt.
 - **Analytics** – per-position leaderboards (WR, RB, TE, QB) with percentile shading and an X/Y scatter of any two metrics,
   including YPRR and TPRR vs man and vs zone coverage (2023 onward, from nflverse coverage tags) and expected fantasy
-  points (xFP) / points over expected (FPOE).
+  points (xFP) / points over expected (FPOE). A **Coverage & splits** column set adds YPRR vs each coverage shell (Cover 1/2/3/4),
+  vs the blitz and with/without motion, contested-target rate vs man and zone, vertical-route share, and QB EPA per dropback vs
+  man, zone, the blitz, pressure and a clean pocket; player pages show the full split table and targets by route (FTN Data via
+  nflverse, CC BY-SA 4.0).
 - **Matchups** – fantasy points allowed by every defense to QBs, RBs, WRs and TEs (your scoring), run/pass funnel
   defenses, man/zone coverage rates, and offensive lines (sack, hit and pressure rates, RB yards before contact).
 - **Player pages** – percentile bars, weekly fantasy points, season history, game log, and college career.

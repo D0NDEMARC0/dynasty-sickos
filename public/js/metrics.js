@@ -35,6 +35,26 @@ export const M = {
   yprrZone: { label: 'YPRR vs zone', fmt: d2, desc: 'Receiving yards per route run against zone coverage. Routes vs that coverage = on-field dropbacks where the defense played it (coverage tags in nflverse participation data) × position route rate; needs 40+ such routes. Participation data is published after each season, so the in-progress season fills in once it ends', src: 'nflverse' },
   tprrMan: { label: 'TPRR vs man', fmt: pct, desc: 'Targets per route run against man coverage. Routes vs that coverage = on-field dropbacks where the defense played it (coverage tags in nflverse participation data) × position route rate; needs 40+ such routes. Participation data is published after each season, so the in-progress season fills in once it ends', src: 'nflverse' },
   tprrZone: { label: 'TPRR vs zone', fmt: pct, desc: 'Targets per route run against zone coverage. Routes vs that coverage = on-field dropbacks where the defense played it (coverage tags in nflverse participation data) × position route rate; needs 40+ such routes. Participation data is published after each season, so the in-progress season fills in once it ends', src: 'nflverse' },
+  // coverage shells (participation coverage tags, 2023+, published after each season); routes vs a shell = on-field
+  // dropbacks where the defense played it × position route rate; each needs 40+ such routes
+  yprrC1: { label: 'YPRR vs Cover 1', fmt: d2, desc: 'Yards per route run against Cover 1: man coverage with one deep safety, the most common NFL coverage. Needs 40+ routes against it; published after each season', src: 'FTN Data via nflverse' },
+  yprrC2: { label: 'YPRR vs Cover 2', fmt: d2, desc: 'Yards per route run against Cover 2: two deep safeties, zone underneath. Needs 40+ routes against it; published after each season', src: 'FTN Data via nflverse' },
+  yprrC3: { label: 'YPRR vs Cover 3', fmt: d2, desc: 'Yards per route run against Cover 3: three deep zones, four underneath. Needs 40+ routes against it; published after each season', src: 'FTN Data via nflverse' },
+  yprrC4: { label: 'YPRR vs Cover 4', fmt: d2, desc: 'Yards per route run against Cover 4 (quarters): four deep zones. Needs 40+ routes against it; published after each season', src: 'FTN Data via nflverse' },
+  // blitz and motion (FTN charting, updated within two days of each game)
+  yprrBlitz: { label: 'YPRR vs blitz', fmt: d2, desc: 'Yards per route run when the defense sent 5+ pass rushers. Needs 40+ such routes. In a season before its participation data is out, routes vs the blitz are estimated from his team’s blitz rate in his games (marked *)', src: 'FTN charting via nflverse' },
+  tprrBlitz: { label: 'TPRR vs blitz', fmt: pct, desc: 'Targets per route run when the defense sent 5+ pass rushers: who the quarterback trusts when the ball has to come out fast', src: 'FTN charting via nflverse' },
+  yprrMo: { label: 'YPRR w/ motion', fmt: d2, desc: 'Yards per route run on dropbacks with pre-snap motion (by anyone on the offense)', src: 'FTN charting via nflverse' },
+  yprrNoMo: { label: 'YPRR no motion', fmt: d2, desc: 'Yards per route run on dropbacks without pre-snap motion', src: 'FTN charting via nflverse' },
+  contMan: { label: 'Contested % vs man', fmt: pct, desc: 'Share of his charted targets against man coverage that were contested (a defender in contact at the catch point). Lower = more open: a free stand-in for separation vs man. Needs 15+ such targets', src: 'FTN charting + coverage tags via nflverse' },
+  contZone: { label: 'Contested % vs zone', fmt: pct, desc: 'Share of his charted targets against zone coverage that were contested. Lower = more open. Needs 15+ such targets', src: 'FTN charting + coverage tags via nflverse' },
+  vert: { label: 'Vertical tgt %', fmt: pct, desc: 'Share of his route-tagged targets on vertical routes: go, post, corner and wheel', src: 'FTN Data via nflverse' },
+  epaMan: { label: 'EPA/DB vs man', fmt: sgn(d2), desc: 'Expected points added per dropback against man coverage (40+ dropbacks; published after each season)', src: 'FTN Data via nflverse' },
+  epaZone: { label: 'EPA/DB vs zone', fmt: sgn(d2), desc: 'Expected points added per dropback against zone coverage (40+ dropbacks; published after each season)', src: 'FTN Data via nflverse' },
+  epaBlitz: { label: 'EPA/DB vs blitz', fmt: sgn(d2), desc: 'Expected points added per dropback when the defense sent 5+ pass rushers', src: 'FTN charting via nflverse' },
+  epaNoBlitz: { label: 'EPA/DB no blitz', fmt: sgn(d2), desc: 'Expected points added per dropback against 4 or fewer pass rushers', src: 'FTN charting via nflverse' },
+  epaPress: { label: 'EPA/DB pressured', fmt: sgn(d2), desc: 'Expected points added per dropback when he was pressured (published after each season)', src: 'FTN Data via nflverse' },
+  epaClean: { label: 'EPA/DB clean', fmt: sgn(d2), desc: 'Expected points added per dropback from a clean pocket (published after each season)', src: 'FTN Data via nflverse' },
   fdrr: { label: '1D/RR', fmt: v => (v == null ? '—' : v.toFixed(3)), desc: 'First downs per route run', src: 'nflverse' },
   adot: { label: 'aDOT', fmt: d1, desc: 'Average depth of target (air yards per target)', src: 'nflverse' },
   sep: { label: 'Separation', fmt: d2, desc: 'Avg. yards between receiver and nearest defender when the pass arrives', src: 'NFL Next Gen Stats' },
@@ -101,7 +121,7 @@ export const M = {
   score: { label: 'Score', fmt: v => (v == null ? '—' : String(v)), desc: 'Analytics Score (0–100): weighted percentile blend of the position’s most predictive metrics', src: 'Dynasty Lab' },
 };
 
-export const LOWER_BETTER = new Set(['drop', 'stuff', 'skr', 'twp', 'press', 'bad']);
+export const LOWER_BETTER = new Set(['drop', 'stuff', 'skr', 'twp', 'press', 'bad', 'contMan', 'contZone']);
 
 // Column sets for the analytics explorer, per position. Imported columns appear only when data exists.
 export const COLUMNS = {
@@ -118,6 +138,16 @@ export const PROFILE = {
   RB: ['xfp', 'fpoe', 'osh', 'csh', 'tsh', 'frs', 'hvtpg', 'exp10', 'exp15', 'ryoe', 'ryoepct', 'yaco', 'btr', 'succ', 'stuff', 'epar', 'ypc', 'yprr', 'tprr', 'x_grade', 'x_runGrade', 'x_elusive'],
   QB: ['xfp', 'fpoe', 'epadb', 'cpoe', 'fread', 'chkr', 'padot', 'deepr', 'skr', 'twp', 'bad', 'press', 'ratt', 'rypc', 'ruypg', 'aggr', 'x_grade', 'x_passGrade', 'x_btt'],
 };
+
+// The Analytics "Coverage & splits" column set: how each player does against man vs zone, each coverage shell, the
+// blitz and pre-snap motion (free FTN charting and participation data via nflverse).
+export const SPLIT_COLUMNS = {
+  WR: ['ppg', 'routes', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'yprrC1', 'yprrC2', 'yprrC3', 'yprrC4', 'yprrBlitz', 'tprrBlitz', 'yprrMo', 'yprrNoMo', 'sep', 'contMan', 'contZone', 'vert', 'adot'],
+  TE: ['ppg', 'routes', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'tprrMan', 'tprrZone', 'yprrC1', 'yprrC2', 'yprrC3', 'yprrC4', 'yprrBlitz', 'tprrBlitz', 'yprrMo', 'yprrNoMo', 'sep', 'contMan', 'contZone', 'vert', 'adot'],
+  RB: ['ppg', 'routes', 'yprr', 'tprr', 'yprrMan', 'yprrZone', 'yprrBlitz', 'yprrMo', 'yprrNoMo'],
+  QB: ['ppg', 'db', 'epadb', 'epaMan', 'epaZone', 'epaBlitz', 'epaNoBlitz', 'epaPress', 'epaClean', 'press', 'ttt', 'twp'],
+};
+export const SPLIT_SCATTER = { WR: ['yprrZone', 'yprrMan'], TE: ['yprrZone', 'yprrMan'], RB: ['yprrZone', 'yprrMan'], QB: ['epaNoBlitz', 'epaBlitz'] };
 
 export const SCATTER_DEFAULT = { WR: ['tprr', 'yprr'], TE: ['tprr', 'yprr'], RB: ['osh', 'exp10'], QB: ['cpoe', 'epadb'] };
 

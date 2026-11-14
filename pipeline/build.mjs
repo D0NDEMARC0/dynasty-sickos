@@ -195,11 +195,21 @@ meta.count = list.length;
 meta.imports = imports.files;
 meta.public = PUBLIC_BUILD;
 
+// Split and route tables (player pages) go to per-season files that a player page loads when it needs them.
+const splitsOut = {};
+for (const p of list) {
+  for (const [season, s] of Object.entries(p.seasons)) {
+    if (s.split || s.rtree || s.qsplit) (splitsOut[season] ||= {})[p.id] = { sp: s.split, rt: s.rtree, qs: s.qsplit, est: s.splitEst };
+    delete s.split; delete s.rtree; delete s.qsplit; delete s.splitEst;
+  }
+}
+meta.splitSeasons = Object.keys(splitsOut).map(Number);
 fs.writeFileSync(path.join(OUT, 'players.json'), JSON.stringify({ meta, players: list }));
 for (const season of seasonsDesc) {
   const obj = {};
   for (const [gsis, rows] of logsOut[season]) obj[idFor(gsis)] = rows;
   fs.writeFileSync(path.join(OUT, `logs_${season}.json`), JSON.stringify(obj));
+  fs.writeFileSync(path.join(OUT, `splits_${season}.json`), JSON.stringify(splitsOut[season] || {}));
 }
 fs.writeFileSync(path.join(OUT, 'idmap.json'), JSON.stringify({ fp2sid }));
 // team matchups: fantasy points allowed, funnels, coverage, offensive lines

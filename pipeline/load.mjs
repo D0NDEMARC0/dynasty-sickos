@@ -70,19 +70,30 @@ export async function pbp(season, current) {
 export async function participation(season, current) {
   const p = await nflverse('pbp_participation', `pbp_participation_${season}.parquet`, ttl(season, current));
   if (!p) return null;
-  const rows = await readParquet(p, ['nflverse_game_id', 'play_id', 'offense_players', 'was_pressure', 'defense_man_zone_type']);
+  const rows = await readParquet(p, ['nflverse_game_id', 'play_id', 'offense_players', 'was_pressure', 'defense_man_zone_type',
+    'defense_coverage_type', 'route', 'number_of_pass_rushers']);
   const m = new Map();
   // coverage tag on pass plays (2023+): M = man, Z = zone
   const cov = t => (t === 'MAN_COVERAGE' ? 'M' : t === 'ZONE_COVERAGE' ? 'Z' : null);
-  for (const r of rows) m.set(`${r.nflverse_game_id}|${r.play_id}`, { off: r.offense_players ? r.offense_players.split(';') : [], pressure: r.was_pressure, cov: cov(r.defense_man_zone_type) });
+  for (const r of rows) {
+    m.set(`${r.nflverse_game_id}|${r.play_id}`, {
+      off: r.offense_players ? r.offense_players.split(';') : [], pressure: r.was_pressure, cov: cov(r.defense_man_zone_type),
+      shell: SHELL[r.defense_coverage_type] || null, route: r.route || null, rushers: rusherCount(r.number_of_pass_rushers),
+    });
+  }
   return m;
 }
+// Coverage shell (2023+). Mixed ("COMBO") and blown coverages are left out.
+const SHELL = { COVER_0: 'C0', COVER_1: 'C1', COVER_2: 'C2', '2_MAN': 'C2M', COVER_3: 'C3', COVER_4: 'C4', COVER_6: 'C6', COVER_9: 'C9' };
+// pass rushers on a dropback; 0 means "not charted", and a handful of rows carry typos like 44
+export const rusherCount = n => (n >= 1 && n <= 11 ? Number(n) : null);
 
 export async function ftn(season, current) {
   const p = await nflverse('ftn_charting', `ftn_charting_${season}.parquet`, ttl(season, current));
   if (!p) return null;
   const rows = await readParquet(p, ['nflverse_game_id', 'nflverse_play_id', 'is_play_action', 'is_screen_pass', 'is_qb_out_of_pocket',
-    'is_interception_worthy', 'is_catchable_ball', 'is_contested_ball', 'is_created_reception', 'is_drop', 'is_throw_away', 'read_thrown']);
+    'is_interception_worthy', 'is_catchable_ball', 'is_contested_ball', 'is_created_reception', 'is_drop', 'is_throw_away', 'read_thrown',
+    'is_motion', 'n_pass_rushers']);
   const m = new Map();
   for (const r of rows) m.set(`${r.nflverse_game_id}|${r.nflverse_play_id}`, r);
   return m;

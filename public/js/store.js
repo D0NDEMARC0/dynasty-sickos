@@ -67,6 +67,13 @@ export async function loadValues() {
   bump();
 }
 
+/** Coverage / blitz / motion splits and route trees for one season, by player id (loaded when a player page needs them). */
+const splitCache = {};
+export async function loadSplits(season) {
+  if (!splitCache[season]) splitCache[season] = fetchData(`data/splits_${season}.json`).then(r => (r.ok ? r.json() : {})).catch(() => ({}));
+  return splitCache[season];
+}
+
 export async function loadLogs(season) {
   if (!S.logs[season]) {
     const r = await fetchData(`data/logs_${season}.json`);

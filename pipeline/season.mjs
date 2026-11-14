@@ -1,4 +1,5 @@
 // Per-season aggregation: real stats, fantasy points, usage, and advanced efficiency metrics.
+import { rusherCount } from './load.mjs';
 
 // Share of a player's on-field dropbacks where they actually run a route (pass-pro snaps excluded).
 // Applied to on-field dropback counts from participation data (or the snap-based estimate).
@@ -27,8 +28,24 @@ function blank() {
     dbMan: 0, dbZone: 0, tgtMan: 0, tgtZone: 0, ydsMan: 0, ydsZone: 0,
     // FTN "read thrown": first-read targets (receivers) and read progression (QBs)
     read1: 0, readTgt: 0, teamRead1: 0, qbReadN: 0, qbRead1: 0, qbChk: 0,
+    // splits by coverage shell, blitz and motion: key -> [on-field dropbacks, targets, yards] (see SPLITS)
+    sp: {}, teamSp: {},
+    // targets by the route he ran (participation tags the targeted receiver's route): route -> [targets, catches, yards]
+    rt: {},
+    // contested targets vs man / zone (FTN charting x participation coverage tags)
+    ftnTgtMan: 0, contMan: 0, ftnTgtZone: 0, contZone: 0,
+    // quarterback EPA by coverage, blitz and pressure: key -> [dropbacks, EPA]
+    qs: {},
   };
 }
+
+// Split keys. Man/zone and the coverage shells need participation data (published after each season); blitz and
+// motion come from FTN charting, which is updated within two days of each game.
+export const SPLITS = ['M', 'Z', 'C0', 'C1', 'C2', 'C2M', 'C3', 'C4', 'C6', 'C9', 'BL', 'NB', 'MO', 'NM'];
+const VERTICAL = new Set(['GO', 'POST', 'CORNER', 'WHEEL']);
+const SPLIT_FIELDS = ['yprrC1', 'yprrC2', 'yprrC3', 'yprrC4', 'yprrBlitz', 'tprrBlitz', 'yprrMo', 'yprrNoMo', 'contMan', 'contZone', 'vert',
+  'epaMan', 'epaZone', 'epaBlitz', 'epaNoBlitz', 'epaPress', 'epaClean', 'split', 'splitEst', 'rtree', 'qsplit'];
+const add = (obj, k, i, v = 1) => { (obj[k] ||= [0, 0, 0])[i] += v; };
 
 /**
  * @returns {{ players: Map<string, object>, skew: Map<string, number>, posSkew: object, diag: object }}
@@ -39,7 +56,7 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
 
   // ---------- team-game totals ----------
   const TG = new Map(); // `${game}|${team}` -> totals
-  const tg = (g, t) => { const k = `${g}|${t}`; let o = TG.get(k); if (!o) { o = { db: 0, tgt: 0, ay: 0, car: 0, plays: 0, read1: 0 }; TG.set(k, o); } return o; };
+  const tg = (g, t) => { const k = `${g}|${t}`; let o = TG.get(k); if (!o) { o = { db: 0, tgt: 0, ay: 0, car: 0, plays: 0, read1: 0, sp: {} }; TG.set(k, o); } return o; };
   const READS = new Set(['1', '2', 'CHK', 'DES', 'SD']); // first read, second+, checkdown, designed, scramble drill
 
   for (const p of plays) {
@@ -52,19 +69,29 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
     if (isDb || isRush) T.plays++;
     const ch = ftn ? ftn.get(key) : null;
     const pr = part ? part.get(key) : null;
+    // which splits this play belongs to: man/zone, the coverage shell, blitz (5+ rushers) or not, motion or not
+    const rushers = rusherCount(ch?.n_pass_rushers) ?? pr?.rushers ?? null;
+    const blitz = rushers == null ? null : rushers >= 5 ? 'BL' : 'NB';
+    const motion = ch?.is_motion == null ? null : ch.is_motion ? 'MO' : 'NM';
+    const tags = [pr?.cov, pr?.shell, blitz, motion].filter(Boolean);
 
     if (isDb) {
       T.db++;
+      for (const k of [blitz, motion]) if (k) T.sp[k] = (T.sp[k] || 0) + 1;
       if (pr) {
         for (const id of pr.off) {
           const o = get(id); o.passSnaps++; o.games.add(p.game_id); o.gt[p.game_id] = p.posteam;
           if (pr.cov === 'M') o.dbMan++; else if (pr.cov === 'Z') o.dbZone++;
+          for (const k of tags) add(o.sp, k, 0);
         }
       }
       if (p.passer_player_id) {
         const q = get(p.passer_player_id);
         q.db++; q.games.add(p.game_id); q.gt[p.game_id] = p.posteam;
         q.qbEpa += p.qb_epa ?? 0;
+        for (const k of [pr?.cov, blitz, pr && pr.pressure != null ? (pr.pressure ? 'PR' : 'CL') : null]) {
+          if (k) { const a = (q.qs[k] ||= [0, 0]); a[0]++; a[1] += p.qb_epa ?? 0; }
+        }
         if (p.sack) q.sacks++;
         if (pr && pr.pressure != null) { q.pressN++; if (pr.pressure) q.pressured++; }
         if (ch) { q.ftnDb++; if (ch.is_interception_worthy) q.intWorthy++; if (ch.is_play_action) q.pa++; if (ch.is_qb_out_of_pocket) q.oop++; }
@@ -101,6 +128,10 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       if (p.touchdown && p.td_player_id === p.receiver_player_id) o.recTd++;
       if (pr?.cov === 'M') { o.tgtMan++; if (p.complete_pass) o.ydsMan += p.receiving_yards ?? 0; }
       else if (pr?.cov === 'Z') { o.tgtZone++; if (p.complete_pass) o.ydsZone += p.receiving_yards ?? 0; }
+      for (const k of tags) { add(o.sp, k, 1); if (p.complete_pass) add(o.sp, k, 2, p.receiving_yards ?? 0); }
+      if (pr?.route) { const a = (o.rt[pr.route] ||= [0, 0, 0]); a[0]++; if (p.complete_pass) { a[1]++; a[2] += p.receiving_yards ?? 0; } }
+      if (ch && pr?.cov === 'M') { o.ftnTgtMan++; if (ch.is_contested_ball) o.contMan++; }
+      else if (ch && pr?.cov === 'Z') { o.ftnTgtZone++; if (ch.is_contested_ball) o.contZone++; }
       if (ch) {
         o.ftnTgt++;
         const rd = ch.read_thrown != null ? String(ch.read_thrown) : null;
@@ -195,6 +226,7 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       const T = TG.get(`${g}|${team}`);
       if (!T) continue;
       o.teamDb += T.db; o.teamTgt += T.tgt; o.teamAy += T.ay; o.teamCar += T.car; o.teamRead1 += T.read1;
+      for (const [k, n] of Object.entries(T.sp)) o.teamSp[k] = (o.teamSp[k] || 0) + n;
       const sn = snapByPG.get(`${id}|${g}`);
       if (sn) { dbSnapW += sn.pct * T.db; }
     }
@@ -243,6 +275,21 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
     // routes vs man / zone: on-field dropbacks with that coverage tag × route rate; need 40+ to show a rate
     const rMan = o.dbMan * (ROUTE_RATE[pos] ?? 0), rZone = o.dbZone * (ROUTE_RATE[pos] ?? 0);
     const cov = (num, den, d) => (den >= 40 ? r(div(num, den), d) : null);
+    // Coverage / blitz / motion splits: routes = on-field dropbacks with that tag × route rate. Without participation
+    // data (the in-progress season) there are only blitz and motion splits, and their routes are estimated: his
+    // routes × his team's share of such dropbacks in the games he played.
+    const rr = ROUTE_RATE[pos] ?? 0;
+    const spl = {};
+    if (rr) {
+      for (const k of SPLITS) {
+        const a = o.sp[k];
+        const rts = part ? (a?.[0] ?? 0) * rr : o.teamDb ? routes * ((o.teamSp[k] ?? 0) / o.teamDb) : 0;
+        if (rts >= 1 || a?.[1]) spl[k] = [Math.round(rts), a?.[1] ?? 0, a?.[2] ?? 0];
+      }
+    }
+    const yp = k => cov(spl[k]?.[2], spl[k]?.[0], 2), tp = k => cov(spl[k]?.[1], spl[k]?.[0]);
+    const rtTgt = Object.values(o.rt).reduce((n, a) => n + a[0], 0);
+    const qe = k => (o.qs[k]?.[0] >= 40 ? r(o.qs[k][1] / o.qs[k][0]) : null);
 
     const s = {
       team, g: gp,
@@ -277,6 +324,15 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       yprr: r(div(o.recYds, routes), 2), tprr: r(div(o.tgt, routes)), fdrr: r(div(o.recFd, routes)),
       yprrMan: cov(o.ydsMan, rMan, 2), yprrZone: cov(o.ydsZone, rZone, 2), tprrMan: cov(o.tgtMan, rMan), tprrZone: cov(o.tgtZone, rZone),
       routesMan: rMan ? Math.round(rMan) : null, routesZone: rZone ? Math.round(rZone) : null,
+      yprrC1: yp('C1'), yprrC2: yp('C2'), yprrC3: yp('C3'), yprrC4: yp('C4'),
+      yprrBlitz: yp('BL'), tprrBlitz: tp('BL'), yprrMo: yp('MO'), yprrNoMo: yp('NM'),
+      // contested-target rate vs man and zone: a free stand-in for separation by coverage (lower = more open)
+      contMan: o.ftnTgtMan >= 15 ? r(div(o.contMan, o.ftnTgtMan)) : null, contZone: o.ftnTgtZone >= 15 ? r(div(o.contZone, o.ftnTgtZone)) : null,
+      // share of his route-tagged targets on vertical routes (go, post, corner, wheel)
+      vert: rtTgt >= 15 ? r([...VERTICAL].reduce((n, k) => n + (o.rt[k]?.[0] ?? 0), 0) / rtTgt) : null,
+      // full split and route tables for player pages, for anyone with real volume
+      split: routes >= 50 && Object.keys(spl).length ? spl : undefined, splitEst: !part && Object.keys(spl).length ? true : undefined,
+      rtree: rtTgt >= 10 ? o.rt : undefined,
       // first-read targets (FTN): share of the team's first-read targets in his games, and of his own targets
       frs: o.teamRead1 >= 20 ? r(div(o.read1, o.teamRead1)) : null, fr1: o.readTgt >= 15 ? r(div(o.read1, o.readTgt)) : null,
       adot: r(div(o.ay, o.tgt), 1), ay: Math.round(o.ay), yacr: r(div(o.yac, o.rec), 1),
@@ -293,10 +349,15 @@ export function buildSeason({ season, plays, part, ftn, snaps, weekly, pfr2gsis,
       twp: r(div(o.intWorthy, o.ftnDb)), par: r(div(o.pa, o.ftnDb)), oop: r(div(o.oop, o.ftnDb)),
       // read progression (FTN): how often he throws to his first read, and how often he checks down
       fread: o.qbReadN >= 50 ? r(div(o.qbRead1, o.qbReadN)) : null, chkr: o.qbReadN >= 50 ? r(div(o.qbChk, o.qbReadN)) : null,
+      // EPA per dropback vs man / zone, vs the blitz (5+ rushers) or not, and when pressured vs kept clean (40+ dropbacks)
+      epaMan: qe('M'), epaZone: qe('Z'), epaBlitz: qe('BL'), epaNoBlitz: qe('NB'), epaPress: qe('PR'), epaClean: qe('CL'),
+      qsplit: o.db >= 100 && Object.keys(o.qs).length ? Object.fromEntries(Object.entries(o.qs).map(([k, [n, e]]) => [k, [n, r(e / n)]])) : undefined,
       scr: o.scrambles, ruypg: r(div(sum(w => w.rushing_yards), gp), 1),
       // official rushing (box score): attempts include scrambles and kneel-downs
       ratt: sum(w => w.carries), rypc: r(div(sum(w => w.rushing_yards), sum(w => w.carries)), 2),
     };
+    // the split fields only exist for a fraction of players: leave them out rather than write thousands of nulls
+    for (const k of SPLIT_FIELDS) if (s[k] == null) delete s[k];
     out.set(id, s);
     logs.set(id, wk.map(w => {
       const sn = snapByPG.get(`${id}|${w.game_id}`);
